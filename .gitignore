@@ -1,0 +1,28 @@
+# Rust
+/target/
+Cargo.lock
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Flutter
+view_social_app/build/
+view_social_app/.dart_tool/
+view_social_app/.packages
+view_social_app/.pub-cache/
+view_social_app/.pub/
+view_social_app/pubspec.lock
+
+# Docker
+.docker/

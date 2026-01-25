@@ -1,0 +1,66 @@
+[package]
+name = "view-social-backend"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "view_social_backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "view-social-backend"
+path = "src/main.rs"
+
+[dependencies]
+# Web framework
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "bigdecimal"] }
+redis = { version = "0.24", features = ["tokio-comp"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Authentication & Security
+jsonwebtoken = "9.2"
+bcrypt = "0.15"
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1.33", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+regex = "1.10"
+
+# Async traits
+async-trait = "0.1"
+
+# WebSocket support
+axum-extra = { version = "0.9", features = ["typed-header"] }
+futures-util = "0.3"
+
+# Tracing and logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Environment variables
+dotenvy = "0.15"
+
+# Rate limiting
+governor = "0.6"
+
+[dev-dependencies]
+# Testing
+proptest = "1.4"
+tokio-test = "0.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmarks"
+harness = false
