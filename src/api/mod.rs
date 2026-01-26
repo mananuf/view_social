@@ -2,3 +2,4 @@
 pub mod handlers;
 pub mod middleware;
 pub mod websocket;
+pub mod rate_limit;
