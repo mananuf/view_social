@@ -237,7 +237,7 @@
 - [ ] 10. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 11. Set up Flutter mobile application
+- [ ] 11. Set up Flutter mobile application
 - [x] 11.1 Create Flutter project structure
   - Set up clean architecture folder structure
   - Configure BLoC state management
@@ -263,14 +263,14 @@
   - Build user profile screens
   - _Requirements: 2.1, 3.1, 3.2_
 
-- [~] 11.5 Create messaging screens
+- [ ] 11.5 Create messaging screens
   - Build conversations list screen
   - Create chat screen with real-time messaging
   - Implement typing indicators and read receipts
   - Add media sharing in messages
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 11.6 Create payment screens
+- [x] 11.6 Create payment screens
   - Build wallet screen with balance display
   - Create send money screen with contact search
   - Implement transaction history screen
