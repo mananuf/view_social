@@ -1,58 +1,54 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15
-    container_name: view_social_postgres
+    image: postgres:16-alpine
+    container_name: view-postgres
     environment:
-      POSTGRES_DB: view_social
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: view
+      POSTGRES_PASSWORD: view_password
+      POSTGRES_DB: view_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U view"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: view_social_redis
+    container_name: view-redis
     ports:
       - "6379:6379"
-    volumes:
-      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: view_social_backend
+    container_name: view-backend
+    environment:
+      DATABASE_URL: postgresql://view:view_password@postgres:5432/view_db
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret}
+      PORT: 3000
+      RUST_LOG: info
     ports:
       - "3000:3000"
-    environment:
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/view_social
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=your-secret-key-change-in-production
-      - PORT=3000
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - .:/app
-      - /app/target
+    restart: unless-stopped
 
 volumes:
   postgres_data:
-  redis_data:
+  redis_datta:
