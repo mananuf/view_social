@@ -1,5 +1,5 @@
 use crate::domain::errors::{AppError, Result};
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::{hash, verify};
 
 const BCRYPT_COST: u32 = 12;
 
@@ -136,7 +136,7 @@ mod tests {
                     
                     // Property 6: Same password hashed twice should produce different hashes (salt)
                     let hash2 = service.hash_password(password)?;
-                    prop_assert_ne!(hash, hash2, "Same password should produce different hashes due to salt");
+                    prop_assert_ne!(hash.clone(), hash2.clone(), "Same password should produce different hashes due to salt");
                     
                     // Property 7: Both hashes should verify the original password
                     prop_assert!(service.verify_password(password, &hash2)?);
@@ -209,7 +209,7 @@ mod tests {
         assert!(!service.needs_rehash(&hash));
         
         // Hash with different cost should need rehashing
-        let old_hash = hash(password, 10).unwrap(); // Cost 10
+        let old_hash = bcrypt::hash(password, 10).unwrap(); // Cost 10
         assert!(service.needs_rehash(&old_hash));
     }
 
