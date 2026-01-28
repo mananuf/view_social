@@ -1,8 +1,8 @@
 // Data Transfer Objects for API requests and responses
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 // ============================================================================
 // Authentication DTOs
