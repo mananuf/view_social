@@ -1,7 +1,6 @@
 use crate::domain::errors::{AppError, Result};
 use redis::{Client, Connection, Commands};
 use serde::{Serialize, Deserialize};
-use std::time::Duration;
 use uuid::Uuid;
 
 /// Redis cache implementation for session and feed caching
@@ -33,7 +32,7 @@ impl RedisCache {
         let serialized = serde_json::to_string(value)
             .map_err(|e| AppError::ValidationError(format!("Failed to serialize cache value: {}", e)))?;
         
-        conn.set_ex(key, serialized, ttl_seconds)
+        conn.set_ex::<_, _, ()>(key, serialized, ttl_seconds as usize)
             .map_err(|e| AppError::DatabaseError(format!("Failed to set cache value: {}", e)))?;
         
         Ok(())
@@ -61,7 +60,7 @@ impl RedisCache {
     /// Delete a value from cache
     pub fn delete(&self, key: &str) -> Result<()> {
         let mut conn = self.get_connection()?;
-        conn.del(key)
+        conn.del::<_, ()>(key)
             .map_err(|e| AppError::DatabaseError(format!("Failed to delete cache value: {}", e)))?;
         Ok(())
     }
@@ -85,7 +84,7 @@ impl RedisCache {
             let serialized = serde_json::to_string(&value)
                 .map_err(|e| AppError::ValidationError(format!("Failed to serialize cache value: {}", e)))?;
             
-            conn.set_ex(&key, serialized, ttl_seconds)
+            conn.set_ex::<_, _, ()>(&key, serialized, ttl_seconds as usize)
                 .map_err(|e| AppError::DatabaseError(format!("Failed to set cache value: {}", e)))?;
         }
         
@@ -127,7 +126,7 @@ impl RedisCache {
     /// Set expiration for a key
     pub fn expire(&self, key: &str, ttl_seconds: u64) -> Result<()> {
         let mut conn = self.get_connection()?;
-        conn.expire(key, ttl_seconds as usize)
+        conn.expire::<_, ()>(key, ttl_seconds as usize)
             .map_err(|e| AppError::DatabaseError(format!("Failed to set cache expiration: {}", e)))?;
         Ok(())
     }
@@ -142,12 +141,12 @@ impl RedisCache {
             .map_err(|e| AppError::ValidationError(format!("Failed to serialize list value: {}", e)))?;
         
         // Push to the left (newest items first)
-        conn.lpush(key, serialized)
+        conn.lpush::<_, _, ()>(key, serialized)
             .map_err(|e| AppError::DatabaseError(format!("Failed to push to cache list: {}", e)))?;
         
         // Trim list to max length if specified
         if let Some(max_len) = max_length {
-            conn.ltrim(key, 0, (max_len as isize) - 1)
+            conn.ltrim::<_, ()>(key, 0, (max_len as isize) - 1)
                 .map_err(|e| AppError::DatabaseError(format!("Failed to trim cache list: {}", e)))?;
         }
         
@@ -243,7 +242,7 @@ impl CacheAsidePattern {
         
         // Delete all matching keys
         if !keys.is_empty() {
-            conn.del(&keys)
+            conn.del::<_, ()>(&keys)
                 .map_err(|e| AppError::DatabaseError(format!("Failed to delete keys by pattern: {}", e)))?;
         }
         
