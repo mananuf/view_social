@@ -56,7 +56,9 @@ pub async fn auth_middleware(
         .map_err(|_| AuthError::InvalidToken)?;
 
     // Insert authenticated user into request extensions
-    request.extensions_mut().insert(AuthenticatedUser { user_id });
+    request
+        .extensions_mut()
+        .insert(AuthenticatedUser { user_id });
 
     Ok(next.run(request).await)
 }
@@ -79,7 +81,9 @@ pub async fn optional_auth_middleware(
 
             // Try to validate token
             if let Ok(user_id) = auth_state.jwt_service.validate_access_token(token) {
-                request.extensions_mut().insert(AuthenticatedUser { user_id });
+                request
+                    .extensions_mut()
+                    .insert(AuthenticatedUser { user_id });
             }
         }
     }
@@ -154,7 +158,9 @@ where
         parts
             .extensions
             .get::<AuthenticatedUser>()
-            .map(|user| AuthUser { user_id: user.user_id })
+            .map(|user| AuthUser {
+                user_id: user.user_id,
+            })
             .ok_or(AppError::Unauthorized)
     }
 }
