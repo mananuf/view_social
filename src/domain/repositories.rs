@@ -3,9 +3,10 @@ use crate::domain::errors::Result;
 use async_trait::async_trait;
 use uuid::Uuid;
 use rust_decimal::Decimal;
+use chrono::{DateTime, Utc};
 
 /// Repository trait for User entity operations
-#[async_trait]
+#[async_trait::async_trait]
 pub trait UserRepository: Send + Sync {
     /// Create a new user
     async fn create(&self, user: &User) -> Result<User>;
@@ -102,6 +103,34 @@ pub trait PostRepository: Send + Sync {
     
     /// Get post likes
     async fn get_post_likes(&self, post_id: Uuid, limit: i64, offset: i64) -> Result<Vec<User>>;
+}
+
+/// Repository trait for Conversation entity operations
+#[async_trait]
+pub trait ConversationRepository: Send + Sync {
+    /// Create a new conversation
+    async fn create(&self, conversation_id: Uuid, participant_ids: Vec<Uuid>, is_group: bool, group_name: Option<String>, created_by: Uuid) -> Result<Uuid>;
+    
+    /// Find conversation by ID
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<(Uuid, Vec<Uuid>, bool, Option<String>, DateTime<chrono::Utc>)>>;
+    
+    /// Get all conversations for a user
+    async fn find_by_user(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<(Uuid, Vec<Uuid>, bool, Option<String>, DateTime<chrono::Utc>)>>;
+    
+    /// Check if user is participant in conversation
+    async fn is_participant(&self, conversation_id: Uuid, user_id: Uuid) -> Result<bool>;
+    
+    /// Add participant to conversation
+    async fn add_participant(&self, conversation_id: Uuid, user_id: Uuid) -> Result<()>;
+    
+    /// Remove participant from conversation
+    async fn remove_participant(&self, conversation_id: Uuid, user_id: Uuid) -> Result<()>;
+    
+    /// Get conversation participants
+    async fn get_participants(&self, conversation_id: Uuid) -> Result<Vec<Uuid>>;
+    
+    /// Find direct conversation between two users
+    async fn find_direct_conversation(&self, user1_id: Uuid, user2_id: Uuid) -> Result<Option<Uuid>>;
 }
 
 /// Repository trait for Message entity operations
