@@ -133,3 +133,28 @@ pub fn get_authenticated_user(request: &Request) -> Result<Uuid, AppError> {
         .map(|user| user.user_id)
         .ok_or(AppError::Unauthorized)
 }
+
+// Axum extractor for authenticated user
+#[derive(Clone, Debug)]
+pub struct AuthUser {
+    pub user_id: Uuid,
+}
+
+#[axum::async_trait]
+impl<S> axum::extract::FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthenticatedUser>()
+            .map(|user| AuthUser { user_id: user.user_id })
+            .ok_or(AppError::Unauthorized)
+    }
+}
