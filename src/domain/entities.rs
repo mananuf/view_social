@@ -1,6 +1,8 @@
 use crate::domain::errors::{AppError, Result};
 use crate::domain::value_objects::{Username, Email, PhoneNumber, DisplayName, Bio};
 use chrono::{DateTime, Utc};
+use proptest::prelude::prop;
+use proptest::proptest;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -1188,7 +1190,7 @@ mod tests {
             post_contents in prop::collection::vec("[a-zA-Z0-9 .,!?]{10,100}", 5..20),
             follow_relationships in prop::collection::vec((0usize..5usize, 0usize..5usize), 2..10)
         ) {
-            use std::collections::{HashMap, HashSet};
+            use std::collections::HashSet;
             
             // For any user's feed request, only posts from followed users should be included in the response
             
@@ -1260,7 +1262,7 @@ mod tests {
             
             // Property: Feed should only contain posts from followed users
             for post in &feed_posts {
-                prop_assert!(followed_users.contains(&post.user_id), 
+                proptest::prop_assert!(followed_users.contains(&post.user_id), 
                     "Feed contains post from user {:?} who is not followed by requesting user {:?}", 
                     post.user_id, requesting_user);
             }
@@ -1268,7 +1270,7 @@ mod tests {
             // Property: All posts from followed users should be in the feed (assuming public visibility)
             for post in &posts_from_followed_users {
                 if post.visibility == PostVisibility::Public || post.visibility == PostVisibility::Followers {
-                    prop_assert!(feed_posts.iter().any(|fp| fp.id == post.id),
+                    proptest::prop_assert!(feed_posts.iter().any(|fp| fp.id == post.id),
                         "Feed missing post {:?} from followed user {:?}", 
                         post.id, post.user_id);
                 }
@@ -1280,7 +1282,7 @@ mod tests {
                 .collect();
             
             for post in &feed_posts {
-                prop_assert!(!non_followed_users.contains(&post.user_id),
+                proptest::prop_assert!(!non_followed_users.contains(&post.user_id),
                     "Feed contains post from non-followed user {:?}", post.user_id);
             }
         }
