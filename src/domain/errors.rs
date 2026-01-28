@@ -4,52 +4,52 @@ use thiserror::Error;
 pub enum AppError {
     #[error("Database error: {0}")]
     DatabaseError(String),
-    
+
     #[error("Authentication failed: {0}")]
     AuthenticationError(String),
-    
+
     #[error("Validation error: {0}")]
     ValidationError(String),
-    
+
     #[error("Payment error: {0}")]
     PaymentError(String),
-    
+
     #[error("Not found: {0}")]
     NotFound(String),
-    
+
     #[error("Insufficient funds")]
     InsufficientFunds,
-    
+
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
-    
+
     #[error("Unauthorized access")]
     Unauthorized,
-    
+
     #[error("Forbidden operation")]
     Forbidden,
-    
+
     #[error("Conflict: {0}")]
     Conflict(String),
-    
+
     #[error("Internal server error")]
     InternalServerError,
-    
+
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Service unavailable")]
     ServiceUnavailable,
-    
+
     #[error("Timeout error")]
     Timeout,
-    
+
     #[error("Network error: {0}")]
     NetworkError(String),
-    
+
     #[error("Serialization error: {0}")]
     SerializationError(String),
-    
+
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
 }
@@ -126,9 +126,9 @@ impl AppError {
             AppError::NotFound(_) => 404,
             AppError::Conflict(_) => 409,
             AppError::RateLimitExceeded => 429,
-            AppError::InternalServerError 
-            | AppError::DatabaseError(_) 
-            | AppError::SerializationError(_) 
+            AppError::InternalServerError
+            | AppError::DatabaseError(_)
+            | AppError::SerializationError(_)
             | AppError::ConfigurationError(_) => 500,
             AppError::ServiceUnavailable => 503,
             AppError::Timeout | AppError::NetworkError(_) => 504,
@@ -136,7 +136,7 @@ impl AppError {
             AppError::InsufficientFunds => 402,
         }
     }
-    
+
     pub fn error_code(&self) -> &'static str {
         match self {
             AppError::DatabaseError(_) => "DATABASE_ERROR",

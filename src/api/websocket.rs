@@ -62,13 +62,13 @@ struct Connection {
 }
 
 /// Manages all WebSocket connections and user presence
-/// 
+///
 /// The ConnectionManager provides:
 /// - Connection lifecycle management (register/unregister)
 /// - User presence tracking (online/offline status)
 /// - Automatic cleanup of stale connections
 /// - Broadcasting events to users and all connections
-/// 
+///
 /// # Requirements
 /// - Implements Requirements 4.1 (real-time message delivery)
 /// - Implements Requirements 4.2 (typing indicators and presence)
@@ -152,11 +152,7 @@ impl ConnectionManager {
         if let Some(user_connections) = connections.get(&user_id) {
             for connection in user_connections {
                 if let Err(e) = connection.sender.send(event.clone()) {
-                    tracing::error!(
-                        "Failed to send event to user {}: {}",
-                        user_id,
-                        e
-                    );
+                    tracing::error!("Failed to send event to user {}: {}", user_id, e);
                 }
             }
         }
@@ -197,13 +193,15 @@ impl ConnectionManager {
         let presence = self.presence.read().await;
         presence
             .iter()
-            .filter_map(|(user_id, is_online)| {
-                if *is_online {
-                    Some(*user_id)
-                } else {
-                    None
-                }
-            })
+            .filter_map(
+                |(user_id, is_online)| {
+                    if *is_online {
+                        Some(*user_id)
+                    } else {
+                        None
+                    }
+                },
+            )
             .collect()
     }
 
@@ -262,10 +260,7 @@ impl ConnectionManager {
         }
 
         if !users_to_remove.is_empty() {
-            tracing::info!(
-                "Cleaned up {} stale connections",
-                users_to_remove.len()
-            );
+            tracing::info!("Cleaned up {} stale connections", users_to_remove.len());
         }
     }
 }
@@ -332,11 +327,7 @@ async fn handle_socket(socket: WebSocket, state: WebSocketState, user_id: Uuid) 
         .await;
 
     // Get the connection index for cleanup
-    let connection_index = state
-        .connection_manager
-        .get_connection_count(user_id)
-        .await
-        - 1;
+    let connection_index = state.connection_manager.get_connection_count(user_id).await - 1;
 
     // Spawn a task to send events to the client
     let mut send_task = tokio::spawn(async move {
@@ -382,7 +373,9 @@ async fn handle_socket(socket: WebSocket, state: WebSocketState, user_id: Uuid) 
         }
 
         // Unregister connection on disconnect
-        manager.unregister_connection(user_id, connection_index).await;
+        manager
+            .unregister_connection(user_id, connection_index)
+            .await;
     });
 
     // Wait for either task to finish

@@ -21,9 +21,10 @@ pub struct RateLimitState {
 
 impl RateLimitState {
     pub fn new(redis_url: &str) -> Result<Self, AppError> {
-        let client = Client::open(redis_url)
-            .map_err(|e| AppError::ConfigurationError(format!("Failed to connect to Redis: {}", e)))?;
-        
+        let client = Client::open(redis_url).map_err(|e| {
+            AppError::ConfigurationError(format!("Failed to connect to Redis: {}", e))
+        })?;
+
         Ok(Self {
             redis_client: Arc::new(client),
         })
@@ -37,23 +38,26 @@ pub async fn rate_limit_middleware(
 ) -> Result<Response, RateLimitError> {
     // Extract user identifier (IP address or user ID from auth)
     let user_id = extract_user_identifier(&request);
-    
+
     // Check rate limit
     let is_allowed = check_rate_limit(&rate_limit_state.redis_client, &user_id)?;
-    
+
     if !is_allowed {
         return Err(RateLimitError::LimitExceeded);
     }
-    
+
     Ok(next.run(request).await)
 }
 
 fn extract_user_identifier(request: &Request) -> String {
     // Try to get authenticated user ID from extensions
-    if let Some(auth_user) = request.extensions().get::<crate::api::middleware::AuthenticatedUser>() {
+    if let Some(auth_user) = request
+        .extensions()
+        .get::<crate::api::middleware::AuthenticatedUser>()
+    {
         return format!("user:{}", auth_user.user_id);
     }
-    
+
     // Fall back to IP address
     if let Some(addr) = request
         .headers()
@@ -62,7 +66,7 @@ fn extract_user_identifier(request: &Request) -> String {
     {
         return format!("ip:{}", addr.split(',').next().unwrap_or(addr).trim());
     }
-    
+
     // Default identifier if nothing else works
     "unknown".to_string()
 }
@@ -71,27 +75,31 @@ fn check_rate_limit(redis_client: &Client, user_id: &str) -> Result<bool, RateLi
     let mut conn = redis_client
         .get_connection()
         .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
-    
+
     let current_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    
+
     let _window_start = current_time - RATE_LIMIT_WINDOW_SECONDS;
-    let key = format!("rate_limit:{}:{}", user_id, current_time / RATE_LIMIT_WINDOW_SECONDS);
-    
+    let key = format!(
+        "rate_limit:{}:{}",
+        user_id,
+        current_time / RATE_LIMIT_WINDOW_SECONDS
+    );
+
     // Increment request count
     let count: u32 = conn
         .incr(&key, 1)
         .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
-    
+
     // Set expiry on first request
     if count == 1 {
         let _: () = conn
             .expire(&key, RATE_LIMIT_WINDOW_SECONDS as usize)
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
     }
-    
+
     Ok(count <= RATE_LIMIT_REQUESTS)
 }
 
@@ -172,7 +180,7 @@ mod tests {
         assert_eq!(calculate_retry_after(6), 64);
         assert_eq!(calculate_retry_after(7), 128);
         assert_eq!(calculate_retry_after(8), 256);
-        
+
         // Should cap at 300 seconds
         assert_eq!(calculate_retry_after(9), 300);
         assert_eq!(calculate_retry_after(10), 300);

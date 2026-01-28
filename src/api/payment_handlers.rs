@@ -1,22 +1,21 @@
 use crate::api::dto::{
-    WalletDTO, SetPinRequest, TransferRequest, TransactionDTO,
-    SuccessResponse, PaginatedResponse,
+    PaginatedResponse, SetPinRequest, SuccessResponse, TransactionDTO, TransferRequest, WalletDTO,
 };
-use crate::api::user_handlers::user_to_dto;
-use crate::domain::entities::{Wallet, Transaction, CreateTransactionRequest, TransactionType};
-use crate::domain::errors::AppError;
-use crate::domain::repositories::{WalletRepository, UserRepository};
 use crate::api::middleware::AuthUser;
+use crate::api::user_handlers::user_to_dto;
+use crate::domain::entities::{CreateTransactionRequest, Transaction, TransactionType, Wallet};
+use crate::domain::errors::AppError;
+use crate::domain::repositories::{UserRepository, WalletRepository};
 use axum::{
-    extract::{State, Query},
+    extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
-use std::sync::Arc;
-use serde::Deserialize;
 use rust_decimal::Decimal;
+use serde::Deserialize;
 use std::str::FromStr;
+use std::sync::Arc;
 
 // Application state for payment handlers
 #[derive(Clone)]
@@ -43,11 +42,14 @@ pub async fn get_wallet(
     auth_user: AuthUser,
     State(state): State<PaymentState>,
 ) -> Result<Response, AppError> {
-    let wallet = state.wallet_repo.find_by_user_id(auth_user.user_id).await?
+    let wallet = state
+        .wallet_repo
+        .find_by_user_id(auth_user.user_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Wallet not found".to_string()))?;
-    
+
     let wallet_dto = wallet_to_dto(&wallet);
-    
+
     Ok((StatusCode::OK, Json(SuccessResponse::new(wallet_dto))).into_response())
 }
 
@@ -59,21 +61,26 @@ pub async fn set_wallet_pin(
 ) -> Result<Response, AppError> {
     // Validate PIN confirmation
     if payload.pin != payload.confirm_pin {
-        return Err(AppError::ValidationError("PIN and confirmation do not match".to_string()));
+        return Err(AppError::ValidationError(
+            "PIN and confirmation do not match".to_string(),
+        ));
     }
-    
+
     // Get wallet
-    let mut wallet = state.wallet_repo.find_by_user_id(auth_user.user_id).await?
+    let mut wallet = state
+        .wallet_repo
+        .find_by_user_id(auth_user.user_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Wallet not found".to_string()))?;
-    
+
     // Set PIN
     wallet.set_pin(payload.pin)?;
-    
+
     // Update wallet
     let updated_wallet = state.wallet_repo.update(&wallet).await?;
-    
+
     let wallet_dto = wallet_to_dto(&updated_wallet);
-    
+
     Ok((StatusCode::OK, Json(SuccessResponse::new(wallet_dto))).into_response())
 }
 
@@ -86,34 +93,44 @@ pub async fn create_transfer(
     // Validate amount
     let amount = Decimal::from_str(&payload.amount)
         .map_err(|_| AppError::ValidationError("Invalid amount format".to_string()))?;
-    
+
     if amount <= Decimal::ZERO {
-        return Err(AppError::ValidationError("Amount must be positive".to_string()));
+        return Err(AppError::ValidationError(
+            "Amount must be positive".to_string(),
+        ));
     }
-    
+
     // Get sender wallet
-    let sender_wallet = state.wallet_repo.find_by_user_id(auth_user.user_id).await?
+    let sender_wallet = state
+        .wallet_repo
+        .find_by_user_id(auth_user.user_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Sender wallet not found".to_string()))?;
-    
+
     // Verify PIN
     if !sender_wallet.verify_pin(&payload.pin)? {
         return Err(AppError::AuthenticationError("Invalid PIN".to_string()));
     }
-    
+
     // Check if sender has sufficient balance
     if !sender_wallet.has_sufficient_balance(amount) {
         return Err(AppError::InsufficientFunds);
     }
-    
+
     // Get receiver wallet
-    let receiver_wallet = state.wallet_repo.find_by_user_id(payload.receiver_user_id).await?
+    let receiver_wallet = state
+        .wallet_repo
+        .find_by_user_id(payload.receiver_user_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Receiver wallet not found".to_string()))?;
-    
+
     // Prevent self-transfer
     if sender_wallet.id == receiver_wallet.id {
-        return Err(AppError::ValidationError("Cannot transfer to yourself".to_string()));
+        return Err(AppError::ValidationError(
+            "Cannot transfer to yourself".to_string(),
+        ));
     }
-    
+
     // Create transaction
     let transaction_request = CreateTransactionRequest {
         sender_wallet_id: Some(sender_wallet.id),
@@ -123,27 +140,39 @@ pub async fn create_transfer(
         currency: "NGN".to_string(),
         description: payload.description,
     };
-    
+
     let transaction = Transaction::new(transaction_request)?;
-    
+
     // Process transfer atomically
-    let completed_transaction = state.wallet_repo.process_transfer(
-        sender_wallet.id,
-        receiver_wallet.id,
-        amount,
-        &transaction,
-    ).await?;
-    
+    let completed_transaction = state
+        .wallet_repo
+        .process_transfer(sender_wallet.id, receiver_wallet.id, amount, &transaction)
+        .await?;
+
     // Get sender and receiver user info for response
-    let sender_user = state.user_repo.find_by_id(auth_user.user_id).await?
+    let sender_user = state
+        .user_repo
+        .find_by_id(auth_user.user_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Sender user not found".to_string()))?;
-    
-    let receiver_user = state.user_repo.find_by_id(payload.receiver_user_id).await?
+
+    let receiver_user = state
+        .user_repo
+        .find_by_id(payload.receiver_user_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Receiver user not found".to_string()))?;
-    
-    let transaction_dto = transaction_to_dto(&completed_transaction, Some(&sender_user), Some(&receiver_user));
-    
-    Ok((StatusCode::CREATED, Json(SuccessResponse::new(transaction_dto))).into_response())
+
+    let transaction_dto = transaction_to_dto(
+        &completed_transaction,
+        Some(&sender_user),
+        Some(&receiver_user),
+    );
+
+    Ok((
+        StatusCode::CREATED,
+        Json(SuccessResponse::new(transaction_dto)),
+    )
+        .into_response())
 }
 
 // GET /transactions - Get transaction history
@@ -153,16 +182,18 @@ pub async fn get_transaction_history(
     Query(params): Query<TransactionQuery>,
 ) -> Result<Response, AppError> {
     // Get user's wallet
-    let wallet = state.wallet_repo.find_by_user_id(auth_user.user_id).await?
+    let wallet = state
+        .wallet_repo
+        .find_by_user_id(auth_user.user_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Wallet not found".to_string()))?;
-    
+
     // Get transaction history
-    let transactions = state.wallet_repo.get_transaction_history(
-        wallet.id,
-        params.limit,
-        params.offset,
-    ).await?;
-    
+    let transactions = state
+        .wallet_repo
+        .get_transaction_history(wallet.id, params.limit, params.offset)
+        .await?;
+
     // Convert transactions to DTOs with user information
     let mut transaction_dtos = Vec::new();
     for transaction in &transactions {
@@ -177,7 +208,7 @@ pub async fn get_transaction_history(
         } else {
             None
         };
-        
+
         // Get receiver user if exists
         let receiver_user = if let Some(receiver_wallet_id) = transaction.receiver_wallet_id {
             let receiver_wallet = state.wallet_repo.find_by_id(receiver_wallet_id).await?;
@@ -189,25 +220,20 @@ pub async fn get_transaction_history(
         } else {
             None
         };
-        
+
         transaction_dtos.push(transaction_to_dto(
             transaction,
             sender_user.as_ref(),
             receiver_user.as_ref(),
         ));
     }
-    
+
     // For pagination, we would need to count total transactions
     // For now, we'll use a simple approach
     let total = transaction_dtos.len() as i64;
-    
-    let response = PaginatedResponse::new(
-        transaction_dtos,
-        total,
-        params.limit,
-        params.offset,
-    );
-    
+
+    let response = PaginatedResponse::new(transaction_dtos, total, params.limit, params.offset);
+
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 

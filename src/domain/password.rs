@@ -14,7 +14,7 @@ impl PasswordService {
     pub fn hash_password(&self, password: &str) -> Result<String> {
         // Validate password requirements
         self.validate_password(password)?;
-        
+
         // Hash with cost factor 12
         hash(password, BCRYPT_COST)
             .map_err(|e| AppError::AuthenticationError(format!("Failed to hash password: {}", e)))
@@ -102,45 +102,45 @@ mod tests {
         ) {
             // For any password storage, bcrypt hashing with cost factor 12 should be used
             let service = PasswordService::new();
-            
+
             for password in &passwords {
                 // Hash the password
                 let hash_result = service.hash_password(password);
-                
+
                 if let Ok(hash) = hash_result {
                     // Property 1: Hash should not be empty
                     prop_assert!(!hash.is_empty());
-                    
+
                     // Property 2: Hash should not equal the original password
                     prop_assert_ne!(&hash, password);
-                    
+
                     // Property 3: Hash should use bcrypt format with cost factor 12
                     // Bcrypt format: $2b$12$... or $2a$12$... or $2y$12$...
                     prop_assert!(
-                        hash.starts_with("$2b$12$") || 
-                        hash.starts_with("$2a$12$") || 
+                        hash.starts_with("$2b$12$") ||
+                        hash.starts_with("$2a$12$") ||
                         hash.starts_with("$2y$12$"),
                         "Hash does not use bcrypt with cost factor 12: {}", hash
                     );
-                    
+
                     // Property 4: Original password should verify against hash
                     let verify_result = service.verify_password(password, &hash)?;
                     prop_assert!(verify_result, "Original password should verify against its hash");
-                    
+
                     // Property 5: Different password should not verify
                     let wrong_password = format!("{}X", password);
                     if service.validate_password(&wrong_password).is_ok() {
                         let wrong_verify = service.verify_password(&wrong_password, &hash)?;
                         prop_assert!(!wrong_verify, "Wrong password should not verify");
                     }
-                    
+
                     // Property 6: Same password hashed twice should produce different hashes (salt)
                     let hash2 = service.hash_password(password)?;
                     prop_assert_ne!(hash.clone(), hash2.clone(), "Same password should produce different hashes due to salt");
-                    
+
                     // Property 7: Both hashes should verify the original password
                     prop_assert!(service.verify_password(password, &hash2)?);
-                    
+
                     // Property 8: Hash should not need rehashing (correct cost factor)
                     prop_assert!(!service.needs_rehash(&hash), "Hash with cost 12 should not need rehashing");
                 }
@@ -152,9 +152,9 @@ mod tests {
     fn test_password_hashing() {
         let service = PasswordService::new();
         let password = "SecurePass123";
-        
+
         let hash = service.hash_password(password).unwrap();
-        
+
         assert!(!hash.is_empty());
         assert_ne!(hash, password);
         assert!(hash.starts_with("$2b$12$")); // bcrypt format with cost 12
@@ -164,12 +164,12 @@ mod tests {
     fn test_password_verification() {
         let service = PasswordService::new();
         let password = "SecurePass123";
-        
+
         let hash = service.hash_password(password).unwrap();
-        
+
         // Correct password should verify
         assert!(service.verify_password(password, &hash).unwrap());
-        
+
         // Wrong password should not verify
         assert!(!service.verify_password("WrongPassword123", &hash).unwrap());
     }
@@ -177,22 +177,22 @@ mod tests {
     #[test]
     fn test_password_validation() {
         let service = PasswordService::new();
-        
+
         // Valid password
         assert!(service.validate_password("SecurePass123").is_ok());
-        
+
         // Too short
         assert!(service.validate_password("Short1A").is_err());
-        
+
         // No uppercase
         assert!(service.validate_password("securepass123").is_err());
-        
+
         // No lowercase
         assert!(service.validate_password("SECUREPASS123").is_err());
-        
+
         // No digit
         assert!(service.validate_password("SecurePassword").is_err());
-        
+
         // Too long
         let long_password = "A".repeat(129) + "a1";
         assert!(service.validate_password(&long_password).is_err());
@@ -202,12 +202,12 @@ mod tests {
     fn test_needs_rehash() {
         let service = PasswordService::new();
         let password = "SecurePass123";
-        
+
         let hash = service.hash_password(password).unwrap();
-        
+
         // Hash with correct cost should not need rehashing
         assert!(!service.needs_rehash(&hash));
-        
+
         // Hash with different cost should need rehashing
         let old_hash = bcrypt::hash(password, 10).unwrap(); // Cost 10
         assert!(service.needs_rehash(&old_hash));
@@ -216,10 +216,10 @@ mod tests {
     #[test]
     fn test_generate_reset_token() {
         let service = PasswordService::new();
-        
+
         let token1 = service.generate_reset_token();
         let token2 = service.generate_reset_token();
-        
+
         assert!(!token1.is_empty());
         assert!(!token2.is_empty());
         assert_ne!(token1, token2); // Tokens should be unique
@@ -229,13 +229,13 @@ mod tests {
     fn test_same_password_different_hashes() {
         let service = PasswordService::new();
         let password = "SecurePass123";
-        
+
         let hash1 = service.hash_password(password).unwrap();
         let hash2 = service.hash_password(password).unwrap();
-        
+
         // Same password should produce different hashes (due to salt)
         assert_ne!(hash1, hash2);
-        
+
         // But both should verify correctly
         assert!(service.verify_password(password, &hash1).unwrap());
         assert!(service.verify_password(password, &hash2).unwrap());
