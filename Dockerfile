@@ -1,11 +1,21 @@
-# Build stage
-FROM rust:1.75 as builder
+# Build stage - Use Rust 1.82 (stable and compatible)
+FROM rust:1.91 AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
 
-# Build the application
+# Copy manifests
+# COPY Cargo.toml ./
+
+# Copy source code
+COPY . .
+
+# Build for release
 RUN cargo build --release
 
 # Runtime stage
@@ -19,8 +29,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy the binary from builder stage
-COPY --from=builder /app/target/release/view-social-backend /app/
+# Copy the compiled binary
+COPY --from=builder /app/target/release/view-social-backend /app/view-social-backend
 
 # Expose port
 EXPOSE 3000
