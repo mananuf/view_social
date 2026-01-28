@@ -39,7 +39,7 @@ CREATE TABLE posts (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     content_type post_content_type NOT NULL,
     text_content TEXT,
-    media_urls JSONB DEFAULT '[]'::jsonb,
+    media_attachments JSONB DEFAULT '[]'::jsonb,
     is_reel BOOLEAN DEFAULT FALSE,
     visibility post_visibility DEFAULT 'public',
     like_count INTEGER DEFAULT 0,
@@ -123,7 +123,7 @@ SELECT
     p.user_id as post_author_id,
     p.content_type,
     p.text_content,
-    p.media_urls,
+    p.media_attachments,
     p.is_reel,
     p.visibility,
     p.like_count,
@@ -147,7 +147,7 @@ CREATE INDEX idx_user_feed_cache_is_reel ON user_feed_cache(is_reel);
 
 -- Constraints for posts table
 ALTER TABLE posts ADD CONSTRAINT chk_text_or_media CHECK (
-    text_content IS NOT NULL OR jsonb_array_length(media_urls) > 0
+    text_content IS NOT NULL OR jsonb_array_length(media_attachments) > 0
 );
 ALTER TABLE posts ADD CONSTRAINT chk_reel_video_only CHECK (
     NOT is_reel OR content_type IN ('video', 'mixed')
