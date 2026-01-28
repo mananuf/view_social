@@ -77,7 +77,7 @@ fn check_rate_limit(redis_client: &Client, user_id: &str) -> Result<bool, RateLi
         .unwrap()
         .as_secs();
     
-    let window_start = current_time - RATE_LIMIT_WINDOW_SECONDS;
+    let _window_start = current_time - RATE_LIMIT_WINDOW_SECONDS;
     let key = format!("rate_limit:{}:{}", user_id, current_time / RATE_LIMIT_WINDOW_SECONDS);
     
     // Increment request count
@@ -88,7 +88,7 @@ fn check_rate_limit(redis_client: &Client, user_id: &str) -> Result<bool, RateLi
     // Set expiry on first request
     if count == 1 {
         let _: () = conn
-            .expire(&key, RATE_LIMIT_WINDOW_SECONDS as i64)
+            .expire(&key, RATE_LIMIT_WINDOW_SECONDS as usize)
             .map_err(|e| RateLimitError::RedisError(e.to_string()))?;
     }
     
