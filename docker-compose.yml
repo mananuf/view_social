@@ -8,6 +8,7 @@ services:
       POSTGRES_DB: view_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - ./migrations:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
@@ -34,7 +35,7 @@ services:
       dockerfile: Dockerfile
     container_name: view-backend
     environment:
-      DATABASE_URL: postgresql://view:view_password@postgres:5432/view_db
+      DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret}
@@ -51,4 +52,4 @@ services:
 
 volumes:
   postgres_data:
-  redis_datta:
+  redis_data:
