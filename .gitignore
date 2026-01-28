@@ -26,3 +26,4 @@ view_social_app/pubspec.lock
 
 # Docker
 .docker/view_social_app/ios/build/
+view_social_app/ios/build/
