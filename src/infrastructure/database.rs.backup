@@ -1,0 +1,2633 @@
+use crate::domain::entities::{
+    Message, MessageRead, MessageType, Post, PostVisibility, Transaction, TransactionStatus,
+    TransactionType, User, Wallet, WalletStatus,
+};
+use crate::domain::errors::{AppError, Result};
+use crate::domain::repositories::{MessageRepository, PostRepository, WalletRepository};
+use crate::domain::value_objects::{Bio, DisplayName, Email, PhoneNumber, Username};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
+use sqlx::{FromRow, PgPool};
+use uuid::Uuid;
+
+// Define database row structs
+#[derive(FromRow)]
+struct UserRow {
+    id: Uuid,
+    username: String,
+    email: String,
+    phone_number: Option<String>,
+    display_name: Option<String>,
+    bio: Option<String>,
+    avatar_url: Option<String>,
+    is_verified: bool,
+    follower_count: i32,
+    following_count: i32,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(FromRow)]
+struct PostRow {
+    id: Uuid,
+    user_id: Uuid,
+    content_type: String,
+    text_content: Option<String>,
+    media_attachments: serde_json::Value,
+    is_reel: bool,
+    visibility: String,
+    like_count: i32,
+    comment_count: i32,
+    reshare_count: i32,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(FromRow)]
+struct ConversationRow {
+    id: Uuid,
+    conversation_type: String,
+    title: Option<String>,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(FromRow)]
+struct ParticipantRow {
+    user_id: Uuid,
+}
+
+#[derive(FromRow)]
+struct MessageRow {
+    id: Uuid,
+    conversation_id: Uuid,
+    sender_id: Option<Uuid>,
+    message_type: String,
+    content: Option<String>,
+    media_url: Option<String>,
+    payment_data: Option<serde_json::Value>,
+    reply_to_id: Option<Uuid>,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(FromRow)]
+struct MessageReadRow {
+    id: Uuid,
+    message_id: Uuid,
+    user_id: Uuid,
+    read_at: DateTime<Utc>,
+}
+
+#[derive(FromRow)]
+struct WalletRow {
+    id: Uuid,
+    user_id: Uuid,
+    balance: Decimal,
+    currency: String,
+    status: String,
+    pin_hash: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+#[derive(FromRow)]
+struct TransactionRow {
+    id: Uuid,
+    sender_wallet_id: Option<Uuid>,
+    receiver_wallet_id: Option<Uuid>,
+    transaction_type: String,
+    amount: Decimal,
+    currency: String,
+    status: String,
+    description: Option<String>,
+    reference: String,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+/// PostgreSQL implementation of UserRepository
+pub struct PostgresUserRepository {
+    pool: PgPool,
+}
+
+impl PostgresUserRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// PostgreSQL implementation of PostRepository
+pub struct PostgresPostRepository {
+    pool: PgPool,
+}
+
+impl PostgresPostRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// PostgreSQL implementation of MessageRepository
+pub struct PostgresMessageRepository {
+    pool: PgPool,
+}
+
+impl PostgresMessageRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// PostgreSQL implementation of WalletRepository
+pub struct PostgresWalletRepository {
+    pool: PgPool,
+}
+
+impl PostgresWalletRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::domain::repositories::UserRepository for PostgresUserRepository {
+    async fn create(&self, user: &User) -> Result<User> {
+        sqlx::query(
+            "INSERT INTO users (id, username, email, phone_number, display_name, bio, avatar_url, is_verified, follower_count, following_count, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)")
+            .bind(user.id)
+            .bind(user.username.value())
+            .bind(user.email.value())
+            .bind(user.phone_number.as_ref().map(|p| p.value()))
+            .bind(user.display_name.as_ref().map(|d| d.value()))
+            .bind(user.bio.as_ref().map(|b| b.value()))
+            .bind(user.avatar_url.clone())
+            .bind(user.is_verified)
+            .bind(user.follower_count)
+            .bind(user.following_count)
+            .bind(user.created_at)
+            .bind(user.updated_at)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to create user: {}", e)))?;
+
+        Ok(user.clone())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>> {
+        let row: Option<UserRow> = sqlx::query_as("SELECT * FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to find user by id: {}", e)))?;
+
+        match row {
+            Some(row) => Ok(Some(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
+        let row: Option<UserRow> = sqlx::query_as("SELECT * FROM users WHERE username = $1")
+            .bind(username)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to find user by username: {}", e))
+            })?;
+
+        match row {
+            Some(row) => Ok(Some(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>> {
+        let row: Option<UserRow> = sqlx::query_as("SELECT * FROM users WHERE email = $1")
+            .bind(email)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to find user by email: {}", e)))?;
+
+        match row {
+            Some(row) => Ok(Some(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    async fn find_by_phone_number(&self, phone_number: &str) -> Result<Option<User>> {
+        let row: Option<UserRow> = sqlx::query_as("SELECT * FROM users WHERE phone_number = $1")
+            .bind(phone_number)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to find user by phone: {}", e)))?;
+
+        match row {
+            Some(row) => Ok(Some(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            })),
+            None => Ok(None),
+        }
+    }
+
+    async fn update(&self, user: &User) -> Result<User> {
+        let row: UserRow = sqlx::query_as(
+            "UPDATE users 
+            SET username = $2, email = $3, phone_number = $4, display_name = $5, bio = $6, 
+                avatar_url = $7, is_verified = $8, follower_count = $9, following_count = $10, updated_at = $11
+            WHERE id = $1
+            RETURNING *")
+            .bind(user.id)
+            .bind(user.username.value())
+            .bind(user.email.value())
+            .bind(user.phone_number.as_ref().map(|p| p.value()))
+            .bind(user.display_name.as_ref().map(|d| d.value()))
+            .bind(user.bio.as_ref().map(|b| b.value()))
+            .bind(user.avatar_url.clone())
+            .bind(user.is_verified)
+            .bind(user.follower_count)
+            .bind(user.following_count)
+            .bind(user.updated_at)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to update user: {}", e)))?;
+
+        Ok(User {
+            id: row.id,
+            username: Username::new(row.username)?,
+            email: Email::new(row.email)?,
+            phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+            display_name: row.display_name.map(DisplayName::new).transpose()?,
+            bio: row.bio.map(Bio::new).transpose()?,
+            avatar_url: row.avatar_url,
+            is_verified: row.is_verified,
+            follower_count: row.follower_count,
+            following_count: row.following_count,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete user: {}", e)))?;
+        Ok(())
+    }
+
+    async fn username_exists(&self, username: &str) -> Result<bool> {
+        let row: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)")
+            .bind(username)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to check username existence: {}", e))
+            })?;
+
+        Ok(row.0)
+    }
+
+    async fn email_exists(&self, email: &str) -> Result<bool> {
+        let row: (bool,) = sqlx::query_as("SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)")
+            .bind(email)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to check email existence: {}", e))
+            })?;
+
+        Ok(row.0)
+    }
+
+    async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<User>> {
+        let rows: Vec<UserRow> = sqlx::query_as(
+            "SELECT * FROM users 
+            WHERE username ILIKE $1 OR display_name ILIKE $1
+            ORDER BY follower_count DESC, created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(format!("%{}%", query))
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to search users: {}", e)))?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(users)
+    }
+
+    async fn get_followers(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<User>> {
+        let rows: Vec<UserRow> = sqlx::query_as(
+            "SELECT u.* FROM users u
+            INNER JOIN follows f ON u.id = f.follower_id
+            WHERE f.following_id = $1
+            ORDER BY f.created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get followers: {}", e)))?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(users)
+    }
+
+    async fn get_following(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<User>> {
+        let rows: Vec<UserRow> = sqlx::query_as(
+            "SELECT u.* FROM users u
+            INNER JOIN follows f ON u.id = f.following_id
+            WHERE f.follower_id = $1
+            ORDER BY f.created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get following: {}", e)))?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(users)
+    }
+
+    async fn is_following(&self, follower_id: Uuid, following_id: Uuid) -> Result<bool> {
+        let row: (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2)",
+        )
+        .bind(follower_id)
+        .bind(following_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to check follow status: {}", e)))?;
+
+        Ok(row.0)
+    }
+
+    async fn follow(&self, follower_id: Uuid, following_id: Uuid) -> Result<()> {
+        let mut tx =
+            self.pool.begin().await.map_err(|e| {
+                AppError::DatabaseError(format!("Failed to start transaction: {}", e))
+            })?;
+
+        // Insert follow relationship
+        sqlx::query(
+            "INSERT INTO follows (follower_id, following_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+            .bind(follower_id)
+            .bind(following_id)
+            .bind(Utc::now())
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to create follow: {}", e)))?;
+
+        // Update follower count
+        sqlx::query("UPDATE users SET following_count = following_count + 1 WHERE id = $1")
+            .bind(follower_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to update following count: {}", e))
+            })?;
+
+        // Update following count
+        sqlx::query("UPDATE users SET follower_count = follower_count + 1 WHERE id = $1")
+            .bind(following_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to update follower count: {}", e))
+            })?;
+
+        tx.commit().await.map_err(|e| {
+            AppError::DatabaseError(format!("Failed to commit follow transaction: {}", e))
+        })?;
+
+        Ok(())
+    }
+
+    async fn unfollow(&self, follower_id: Uuid, following_id: Uuid) -> Result<()> {
+        let mut tx =
+            self.pool.begin().await.map_err(|e| {
+                AppError::DatabaseError(format!("Failed to start transaction: {}", e))
+            })?;
+
+        // Delete follow relationship
+        let result =
+            sqlx::query("DELETE FROM follows WHERE follower_id = $1 AND following_id = $2")
+                .bind(follower_id)
+                .bind(following_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| AppError::DatabaseError(format!("Failed to delete follow: {}", e)))?;
+
+        if result.rows_affected() > 0 {
+            // Update follower count
+            sqlx::query(
+                "UPDATE users SET following_count = GREATEST(following_count - 1, 0) WHERE id = $1",
+            )
+            .bind(follower_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to update following count: {}", e))
+            })?;
+
+            // Update following count
+            sqlx::query(
+                "UPDATE users SET follower_count = GREATEST(follower_count - 1, 0) WHERE id = $1",
+            )
+            .bind(following_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to update follower count: {}", e))
+            })?;
+        }
+
+        tx.commit().await.map_err(|e| {
+            AppError::DatabaseError(format!("Failed to commit unfollow transaction: {}", e))
+        })?;
+
+        Ok(())
+    }
+}
+#[async_trait::async_trait]
+impl PostRepository for PostgresPostRepository {
+    async fn create(&self, post: &Post) -> Result<Post> {
+        // Serialize media attachments to JSON
+        let media_json = serde_json::to_value(&post.media_attachments).map_err(|e| {
+            AppError::SerializationError(format!("Failed to serialize media: {}", e))
+        })?;
+
+        let content_type_str = match post.content_type {
+            crate::domain::entities::PostContentType::Text => "text",
+            crate::domain::entities::PostContentType::Image => "image",
+            crate::domain::entities::PostContentType::Video => "video",
+            crate::domain::entities::PostContentType::Mixed => "mixed",
+        };
+
+        let visibility_str = match post.visibility {
+            PostVisibility::Public => "public",
+            PostVisibility::Followers => "followers",
+            PostVisibility::Private => "private",
+        };
+
+        sqlx::query(
+            "INSERT INTO posts (id, user_id, content_type, text_content, media_attachments, is_reel, visibility, like_count, comment_count, reshare_count, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)")
+            .bind(post.id)
+            .bind(post.user_id)
+            .bind(content_type_str)
+            .bind(&post.text_content)
+            .bind(media_json)
+            .bind(post.is_reel)
+            .bind(visibility_str)
+            .bind(post.like_count)
+            .bind(post.comment_count)
+            .bind(post.reshare_count)
+            .bind(post.created_at)
+            .bind(post.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to create post: {}", e)))?;
+
+        Ok(post.clone())
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Post>> {
+        let row: Option<PostRow> = sqlx::query_as("SELECT * FROM posts WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to find post by id: {}", e)))?;
+
+        match row {
+            Some(row) => {
+                let media_attachments: Vec<crate::domain::entities::MediaAttachment> =
+                    serde_json::from_value(row.media_attachments).map_err(|e| {
+                        AppError::SerializationError(format!("Failed to deserialize media: {}", e))
+                    })?;
+
+                let content_type = match row.content_type.as_str() {
+                    "text" => crate::domain::entities::PostContentType::Text,
+                    "image" => crate::domain::entities::PostContentType::Image,
+                    "video" => crate::domain::entities::PostContentType::Video,
+                    "mixed" => crate::domain::entities::PostContentType::Mixed,
+                    _ => crate::domain::entities::PostContentType::Text,
+                };
+
+                let visibility = match row.visibility.as_str() {
+                    "public" => PostVisibility::Public,
+                    "followers" => PostVisibility::Followers,
+                    "private" => PostVisibility::Private,
+                    _ => PostVisibility::Public,
+                };
+
+                Ok(Some(Post {
+                    id: row.id,
+                    user_id: row.user_id,
+                    content_type,
+                    text_content: row.text_content,
+                    media_attachments,
+                    is_reel: row.is_reel,
+                    visibility,
+                    like_count: row.like_count,
+                    comment_count: row.comment_count,
+                    reshare_count: row.reshare_count,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn update(&self, post: &Post) -> Result<Post> {
+        let media_json = serde_json::to_value(&post.media_attachments).map_err(|e| {
+            AppError::SerializationError(format!("Failed to serialize media: {}", e))
+        })?;
+
+        let content_type_str = match post.content_type {
+            crate::domain::entities::PostContentType::Text => "text",
+            crate::domain::entities::PostContentType::Image => "image",
+            crate::domain::entities::PostContentType::Video => "video",
+            crate::domain::entities::PostContentType::Mixed => "mixed",
+        };
+
+        let visibility_str = match post.visibility {
+            PostVisibility::Public => "public",
+            PostVisibility::Followers => "followers",
+            PostVisibility::Private => "private",
+        };
+
+        let row: PostRow = sqlx::query_as(
+            "UPDATE posts 
+            SET content_type = $2, text_content = $3, media_attachments = $4, is_reel = $5, 
+                visibility = $6, like_count = $7, comment_count = $8, reshare_count = $9, updated_at = $10
+            WHERE id = $1
+            RETURNING *")
+            .bind(post.id)
+            .bind(content_type_str)
+            .bind(&post.text_content)
+            .bind(media_json)
+            .bind(post.is_reel)
+            .bind(visibility_str)
+            .bind(post.like_count)
+            .bind(post.comment_count)
+            .bind(post.reshare_count)
+            .bind(post.updated_at)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to update post: {}", e)))?;
+
+        let media_attachments: Vec<crate::domain::entities::MediaAttachment> =
+            serde_json::from_value(row.media_attachments).map_err(|e| {
+                AppError::SerializationError(format!("Failed to deserialize media: {}", e))
+            })?;
+
+        let content_type = match row.content_type.as_str() {
+            "text" => crate::domain::entities::PostContentType::Text,
+            "image" => crate::domain::entities::PostContentType::Image,
+            "video" => crate::domain::entities::PostContentType::Video,
+            "mixed" => crate::domain::entities::PostContentType::Mixed,
+            _ => crate::domain::entities::PostContentType::Text,
+        };
+
+        let visibility = match row.visibility.as_str() {
+            "public" => PostVisibility::Public,
+            "followers" => PostVisibility::Followers,
+            "private" => PostVisibility::Private,
+            _ => PostVisibility::Public,
+        };
+
+        Ok(Post {
+            id: row.id,
+            user_id: row.user_id,
+            content_type,
+            text_content: row.text_content,
+            media_attachments,
+            is_reel: row.is_reel,
+            visibility,
+            like_count: row.like_count,
+            comment_count: row.comment_count,
+            reshare_count: row.reshare_count,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM posts WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete post: {}", e)))?;
+        Ok(())
+    }
+
+    async fn find_feed(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Post>> {
+        let rows: Vec<PostRow> = sqlx::query_as(
+            "SELECT p.* FROM posts p
+            INNER JOIN follows f ON p.user_id = f.following_id
+            WHERE f.follower_id = $1 AND p.visibility IN ('public', 'followers')
+            ORDER BY p.created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch feed: {}", e)))?;
+
+        let mut posts = Vec::new();
+        for row in rows {
+            let media_attachments: Vec<crate::domain::entities::MediaAttachment> =
+                serde_json::from_value(row.media_attachments).map_err(|e| {
+                    AppError::SerializationError(format!("Failed to deserialize media: {}", e))
+                })?;
+
+            let content_type = match row.content_type.as_str() {
+                "text" => crate::domain::entities::PostContentType::Text,
+                "image" => crate::domain::entities::PostContentType::Image,
+                "video" => crate::domain::entities::PostContentType::Video,
+                "mixed" => crate::domain::entities::PostContentType::Mixed,
+                _ => crate::domain::entities::PostContentType::Text,
+            };
+
+            let visibility = match row.visibility.as_str() {
+                "public" => PostVisibility::Public,
+                "followers" => PostVisibility::Followers,
+                "private" => PostVisibility::Private,
+                _ => PostVisibility::Public,
+            };
+
+            posts.push(Post {
+                id: row.id,
+                user_id: row.user_id,
+                content_type,
+                text_content: row.text_content,
+                media_attachments,
+                is_reel: row.is_reel,
+                visibility,
+                like_count: row.like_count,
+                comment_count: row.comment_count,
+                reshare_count: row.reshare_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(posts)
+    }
+
+    async fn find_by_user_id(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Post>> {
+        let rows: Vec<PostRow> = sqlx::query_as(
+            "SELECT * FROM posts
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch user posts: {}", e)))?;
+
+        let mut posts = Vec::new();
+        for row in rows {
+            let media_attachments: Vec<crate::domain::entities::MediaAttachment> =
+                serde_json::from_value(row.media_attachments).map_err(|e| {
+                    AppError::SerializationError(format!("Failed to deserialize media: {}", e))
+                })?;
+
+            let content_type = match row.content_type.as_str() {
+                "text" => crate::domain::entities::PostContentType::Text,
+                "image" => crate::domain::entities::PostContentType::Image,
+                "video" => crate::domain::entities::PostContentType::Video,
+                "mixed" => crate::domain::entities::PostContentType::Mixed,
+                _ => crate::domain::entities::PostContentType::Text,
+            };
+
+            let visibility = match row.visibility.as_str() {
+                "public" => PostVisibility::Public,
+                "followers" => PostVisibility::Followers,
+                "private" => PostVisibility::Private,
+                _ => PostVisibility::Public,
+            };
+
+            posts.push(Post {
+                id: row.id,
+                user_id: row.user_id,
+                content_type,
+                text_content: row.text_content,
+                media_attachments,
+                is_reel: row.is_reel,
+                visibility,
+                like_count: row.like_count,
+                comment_count: row.comment_count,
+                reshare_count: row.reshare_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(posts)
+    }
+
+    async fn find_public(&self, limit: i64, offset: i64) -> Result<Vec<Post>> {
+        let rows: Vec<PostRow> = sqlx::query_as(
+            "SELECT * FROM posts
+            WHERE visibility = 'public'
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2",
+        )
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch public posts: {}", e)))?;
+
+        let mut posts = Vec::new();
+        for row in rows {
+            let media_attachments: Vec<crate::domain::entities::MediaAttachment> =
+                serde_json::from_value(row.media_attachments).map_err(|e| {
+                    AppError::SerializationError(format!("Failed to deserialize media: {}", e))
+                })?;
+
+            let content_type = match row.content_type.as_str() {
+                "text" => crate::domain::entities::PostContentType::Text,
+                "image" => crate::domain::entities::PostContentType::Image,
+                "video" => crate::domain::entities::PostContentType::Video,
+                "mixed" => crate::domain::entities::PostContentType::Mixed,
+                _ => crate::domain::entities::PostContentType::Text,
+            };
+
+            let visibility = match row.visibility.as_str() {
+                "public" => PostVisibility::Public,
+                "followers" => PostVisibility::Followers,
+                "private" => PostVisibility::Private,
+                _ => PostVisibility::Public,
+            };
+
+            posts.push(Post {
+                id: row.id,
+                user_id: row.user_id,
+                content_type,
+                text_content: row.text_content,
+                media_attachments,
+                is_reel: row.is_reel,
+                visibility,
+                like_count: row.like_count,
+                comment_count: row.comment_count,
+                reshare_count: row.reshare_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(posts)
+    }
+
+    async fn find_reels(
+        &self,
+        user_id: Option<Uuid>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Post>> {
+        let rows: Vec<PostRow> = if let Some(uid) = user_id {
+            sqlx::query_as(
+                "SELECT p.* FROM posts p
+                INNER JOIN follows f ON p.user_id = f.following_id
+                WHERE f.follower_id = $1 AND p.is_reel = true AND p.visibility IN ('public', 'followers')
+                ORDER BY p.created_at DESC
+                LIMIT $2 OFFSET $3")
+                .bind(uid)
+                .bind(limit)
+                .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch reels: {}", e)))?
+        } else {
+            sqlx::query_as(
+                "SELECT * FROM posts
+                WHERE is_reel = true AND visibility = 'public'
+                ORDER BY created_at DESC
+                LIMIT $1 OFFSET $2",
+            )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch public reels: {}", e)))?
+        };
+
+        let mut posts = Vec::new();
+        for row in rows {
+            let media_attachments: Vec<crate::domain::entities::MediaAttachment> =
+                serde_json::from_value(row.media_attachments).map_err(|e| {
+                    AppError::SerializationError(format!("Failed to deserialize media: {}", e))
+                })?;
+
+            let content_type = match row.content_type.as_str() {
+                "text" => crate::domain::entities::PostContentType::Text,
+                "image" => crate::domain::entities::PostContentType::Image,
+                "video" => crate::domain::entities::PostContentType::Video,
+                "mixed" => crate::domain::entities::PostContentType::Mixed,
+                _ => crate::domain::entities::PostContentType::Text,
+            };
+
+            let visibility = match row.visibility.as_str() {
+                "public" => PostVisibility::Public,
+                "followers" => PostVisibility::Followers,
+                "private" => PostVisibility::Private,
+                _ => PostVisibility::Public,
+            };
+
+            posts.push(Post {
+                id: row.id,
+                user_id: row.user_id,
+                content_type,
+                text_content: row.text_content,
+                media_attachments,
+                is_reel: row.is_reel,
+                visibility,
+                like_count: row.like_count,
+                comment_count: row.comment_count,
+                reshare_count: row.reshare_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(posts)
+    }
+
+    async fn search(&self, query: &str, limit: i64, offset: i64) -> Result<Vec<Post>> {
+        let rows: Vec<PostRow> = sqlx::query_as(
+            "SELECT * FROM posts
+            WHERE text_content ILIKE $1 AND visibility = 'public'
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(format!("%{}%", query))
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to search posts: {}", e)))?;
+
+        let mut posts = Vec::new();
+        for row in rows {
+            let media_attachments: Vec<crate::domain::entities::MediaAttachment> =
+                serde_json::from_value(row.media_attachments).map_err(|e| {
+                    AppError::SerializationError(format!("Failed to deserialize media: {}", e))
+                })?;
+
+            let content_type = match row.content_type.as_str() {
+                "text" => crate::domain::entities::PostContentType::Text,
+                "image" => crate::domain::entities::PostContentType::Image,
+                "video" => crate::domain::entities::PostContentType::Video,
+                "mixed" => crate::domain::entities::PostContentType::Mixed,
+                _ => crate::domain::entities::PostContentType::Text,
+            };
+
+            let visibility = match row.visibility.as_str() {
+                "public" => PostVisibility::Public,
+                "followers" => PostVisibility::Followers,
+                "private" => PostVisibility::Private,
+                _ => PostVisibility::Public,
+            };
+
+            posts.push(Post {
+                id: row.id,
+                user_id: row.user_id,
+                content_type,
+                text_content: row.text_content,
+                media_attachments,
+                is_reel: row.is_reel,
+                visibility,
+                like_count: row.like_count,
+                comment_count: row.comment_count,
+                reshare_count: row.reshare_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(posts)
+    }
+
+    async fn increment_like_count(&self, post_id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE posts SET like_count = like_count + 1, updated_at = $2 WHERE id = $1")
+            .bind(post_id)
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to increment like count: {}", e))
+            })?;
+        Ok(())
+    }
+
+    async fn decrement_like_count(&self, post_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE posts SET like_count = GREATEST(like_count - 1, 0), updated_at = $2 WHERE id = $1")
+            .bind(post_id)
+            .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to decrement like count: {}", e)))?;
+        Ok(())
+    }
+
+    async fn increment_comment_count(&self, post_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE posts SET comment_count = comment_count + 1, updated_at = $2 WHERE id = $1",
+        )
+        .bind(post_id)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to increment comment count: {}", e))
+        })?;
+        Ok(())
+    }
+
+    async fn decrement_comment_count(&self, post_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE posts SET comment_count = GREATEST(comment_count - 1, 0), updated_at = $2 WHERE id = $1")
+            .bind(post_id)
+            .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to decrement comment count: {}", e)))?;
+        Ok(())
+    }
+
+    async fn increment_reshare_count(&self, post_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE posts SET reshare_count = reshare_count + 1, updated_at = $2 WHERE id = $1",
+        )
+        .bind(post_id)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to increment reshare count: {}", e))
+        })?;
+        Ok(())
+    }
+
+    async fn decrement_reshare_count(&self, post_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE posts SET reshare_count = GREATEST(reshare_count - 1, 0), updated_at = $2 WHERE id = $1")
+            .bind(post_id)
+            .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to decrement reshare count: {}", e)))?;
+        Ok(())
+    }
+
+    async fn has_user_liked(&self, user_id: Uuid, post_id: Uuid) -> Result<bool> {
+        let row: (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM post_likes WHERE user_id = $1 AND post_id = $2)",
+        )
+        .bind(user_id)
+        .bind(post_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to check like status: {}", e)))?;
+
+        Ok(row.0)
+    }
+
+    async fn like_post(&self, user_id: Uuid, post_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO post_likes (user_id, post_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+            .bind(user_id)
+            .bind(post_id)
+            .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to like post: {}", e)))?;
+        Ok(())
+    }
+
+    async fn unlike_post(&self, user_id: Uuid, post_id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM post_likes WHERE user_id = $1 AND post_id = $2")
+            .bind(user_id)
+            .bind(post_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to unlike post: {}", e)))?;
+        Ok(())
+    }
+
+    async fn get_post_likes(&self, post_id: Uuid, limit: i64, offset: i64) -> Result<Vec<User>> {
+        let rows: Vec<UserRow> = sqlx::query_as(
+            "SELECT u.* FROM users u
+            INNER JOIN post_likes pl ON u.id = pl.user_id
+            WHERE pl.post_id = $1
+            ORDER BY pl.created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(post_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get post likes: {}", e)))?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(User {
+                id: row.id,
+                username: Username::new(row.username)?,
+                email: Email::new(row.email)?,
+                phone_number: row.phone_number.map(PhoneNumber::new).transpose()?,
+                display_name: row.display_name.map(DisplayName::new).transpose()?,
+                bio: row.bio.map(Bio::new).transpose()?,
+                avatar_url: row.avatar_url,
+                is_verified: row.is_verified,
+                follower_count: row.follower_count,
+                following_count: row.following_count,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+        Ok(users)
+    }
+}
+/// PostgreSQL implementation of ConversationRepository
+pub struct PostgresConversationRepository {
+    pool: PgPool,
+}
+
+impl PostgresConversationRepository {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl crate::domain::repositories::ConversationRepository for PostgresConversationRepository {
+    async fn create(
+        &self,
+        conversation_id: Uuid,
+        participant_ids: Vec<Uuid>,
+        is_group: bool,
+        group_name: Option<String>,
+        created_by: Uuid,
+    ) -> Result<Uuid> {
+        let mut tx =
+            self.pool.begin().await.map_err(|e| {
+                AppError::DatabaseError(format!("Failed to start transaction: {}", e))
+            })?;
+
+        let conversation_type = if is_group { "group" } else { "direct" };
+
+        // Create conversation
+        sqlx::query(
+            "INSERT INTO conversations (id, conversation_type, title, created_by, created_at, updated_at, last_message_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)")
+            .bind(conversation_id)
+            .bind(conversation_type)
+            .bind(group_name)
+            .bind(created_by)
+            .bind(Utc::now())
+            .bind(Utc::now())
+            .bind(Utc::now())
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to create conversation: {}", e)))?;
+
+        // Add participants
+        for participant_id in participant_ids {
+            sqlx::query(
+                "INSERT INTO conversation_participants (conversation_id, user_id, joined_at, is_admin)
+                VALUES ($1, $2, $3, $4)")
+                .bind(conversation_id)
+                .bind(participant_id)
+                .bind(Utc::now())
+                .bind(participant_id == created_by)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to add participant: {}", e)))?;
+        }
+
+        tx.commit().await.map_err(|e| {
+            AppError::DatabaseError(format!("Failed to commit conversation creation: {}", e))
+        })?;
+
+        Ok(conversation_id)
+    }
+
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<(Uuid, Vec<Uuid>, bool, Option<String>, DateTime<Utc>)>> {
+        let row: Option<ConversationRow> = sqlx::query_as(
+            "SELECT id, conversation_type, title, created_at
+            FROM conversations
+            WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to find conversation: {}", e)))?;
+
+        match row {
+            Some(row) => {
+                // Get participants
+                let participants: Vec<ParticipantRow> = sqlx::query_as(
+                    "SELECT user_id FROM conversation_participants
+                    WHERE conversation_id = $1 AND left_at IS NULL",
+                )
+                .bind(id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to get participants: {}", e))
+                })?;
+
+                let participant_ids: Vec<Uuid> = participants.iter().map(|p| p.user_id).collect();
+                let is_group = row.conversation_type == "group";
+
+                Ok(Some((
+                    row.id,
+                    participant_ids,
+                    is_group,
+                    row.title,
+                    row.created_at,
+                )))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn find_by_user(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<(Uuid, Vec<Uuid>, bool, Option<String>, DateTime<Utc>)>> {
+        let rows: Vec<ConversationRow> = sqlx::query_as(
+            "SELECT DISTINCT c.id, c.conversation_type, c.title, c.created_at
+            FROM conversations c
+            INNER JOIN conversation_participants cp ON c.id = cp.conversation_id
+            WHERE cp.user_id = $1 AND cp.left_at IS NULL
+            ORDER BY c.last_message_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to find user conversations: {}", e))
+        })?;
+
+        let mut conversations = Vec::new();
+        for row in rows {
+            // Get participants for each conversation
+            let participants: Vec<ParticipantRow> = sqlx::query_as(
+                "SELECT user_id FROM conversation_participants
+                WHERE conversation_id = $1 AND left_at IS NULL",
+            )
+            .bind(row.id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to get participants: {}", e)))?;
+
+            let participant_ids: Vec<Uuid> = participants.iter().map(|p| p.user_id).collect();
+            let is_group = row.conversation_type == "group";
+
+            conversations.push((row.id, participant_ids, is_group, row.title, row.created_at));
+        }
+
+        Ok(conversations)
+    }
+
+    async fn is_participant(&self, conversation_id: Uuid, user_id: Uuid) -> Result<bool> {
+        let row: (bool,) = sqlx::query_as(
+            "SELECT EXISTS(
+                SELECT 1 FROM conversation_participants
+                WHERE conversation_id = $1 AND user_id = $2 AND left_at IS NULL
+            )",
+        )
+        .bind(conversation_id)
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to check participant status: {}", e))
+        })?;
+
+        Ok(row.0)
+    }
+
+    async fn add_participant(&self, conversation_id: Uuid, user_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO conversation_participants (conversation_id, user_id, joined_at, is_admin)
+            VALUES ($1, $2, $3, false)
+            ON CONFLICT (conversation_id, user_id) DO UPDATE SET left_at = NULL",
+        )
+        .bind(conversation_id)
+        .bind(user_id)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to add participant: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn remove_participant(&self, conversation_id: Uuid, user_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "UPDATE conversation_participants
+            SET left_at = $3
+            WHERE conversation_id = $1 AND user_id = $2",
+        )
+        .bind(conversation_id)
+        .bind(user_id)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to remove participant: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn get_participants(&self, conversation_id: Uuid) -> Result<Vec<Uuid>> {
+        let rows: Vec<ParticipantRow> = sqlx::query_as(
+            "SELECT user_id FROM conversation_participants
+            WHERE conversation_id = $1 AND left_at IS NULL",
+        )
+        .bind(conversation_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get participants: {}", e)))?;
+
+        Ok(rows.iter().map(|r| r.user_id).collect())
+    }
+
+    async fn find_direct_conversation(
+        &self,
+        user1_id: Uuid,
+        user2_id: Uuid,
+    ) -> Result<Option<Uuid>> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT c.id
+            FROM conversations c
+            WHERE c.conversation_type = 'direct'
+            AND EXISTS (
+                SELECT 1 FROM conversation_participants cp1
+                WHERE cp1.conversation_id = c.id AND cp1.user_id = $1 AND cp1.left_at IS NULL
+            )
+            AND EXISTS (
+                SELECT 1 FROM conversation_participants cp2
+                WHERE cp2.conversation_id = c.id AND cp2.user_id = $2 AND cp2.left_at IS NULL
+            )
+            AND (
+                SELECT COUNT(*) FROM conversation_participants cp
+                WHERE cp.conversation_id = c.id AND cp.left_at IS NULL
+            ) = 2
+            LIMIT 1",
+        )
+        .bind(user1_id)
+        .bind(user2_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to find direct conversation: {}", e))
+        })?;
+
+        Ok(row.map(|r| r.0))
+    }
+}
+
+#[async_trait]
+impl MessageRepository for PostgresMessageRepository {
+    async fn create(&self, message: &Message) -> Result<Message> {
+        let message_type_str = match message.message_type {
+            MessageType::Text => "text",
+            MessageType::Image => "image",
+            MessageType::Video => "video",
+            MessageType::Audio => "audio",
+            MessageType::Payment => "payment",
+            MessageType::System => "system",
+        };
+
+        let payment_json = if let Some(ref payment_data) = message.payment_data {
+            Some(serde_json::to_value(payment_data).map_err(|e| {
+                AppError::SerializationError(format!("Failed to serialize payment data: {}", e))
+            })?)
+        } else {
+            None
+        };
+
+        let row: MessageRow = sqlx::query_as(
+            "INSERT INTO messages (id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at")
+            .bind(message.id)
+            .bind(message.conversation_id)
+            .bind(message.sender_id)
+            .bind(message_type_str)
+            .bind(&message.content)
+            .bind(&message.media_url)
+            .bind(payment_json)
+            .bind(message.reply_to_id)
+            .bind(message.created_at)
+            .bind(message.created_at)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to create message: {}", e)))?;
+
+        // Update conversation last_message_at
+        sqlx::query("UPDATE conversations SET last_message_at = $2 WHERE id = $1")
+            .bind(message.conversation_id)
+            .bind(message.created_at)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to update conversation: {}", e))
+            })?;
+
+        let message_type = match row.message_type.as_str() {
+            "text" => MessageType::Text,
+            "image" => MessageType::Image,
+            "video" => MessageType::Video,
+            "audio" => MessageType::Audio,
+            "payment" => MessageType::Payment,
+            "system" => MessageType::System,
+            _ => MessageType::Text,
+        };
+
+        let payment_data = if let Some(payment_json) = row.payment_data {
+            Some(serde_json::from_value(payment_json).map_err(|e| {
+                AppError::SerializationError(format!("Failed to deserialize payment data: {}", e))
+            })?)
+        } else {
+            None
+        };
+
+        Ok(Message {
+            id: row.id,
+            conversation_id: row.conversation_id,
+            sender_id: row.sender_id,
+            message_type,
+            content: row.content,
+            media_url: row.media_url,
+            payment_data,
+            reply_to_id: row.reply_to_id,
+            created_at: row.created_at,
+        })
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Message>> {
+        let row: Option<MessageRow> = sqlx::query_as("SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to find message: {}", e)))?;
+
+        match row {
+            Some(row) => {
+                let message_type = match row.message_type.as_str() {
+                    "text" => MessageType::Text,
+                    "image" => MessageType::Image,
+                    "video" => MessageType::Video,
+                    "audio" => MessageType::Audio,
+                    "payment" => MessageType::Payment,
+                    "system" => MessageType::System,
+                    _ => MessageType::Text,
+                };
+
+                let payment_data = if let Some(payment_json) = row.payment_data {
+                    Some(serde_json::from_value(payment_json).map_err(|e| {
+                        AppError::SerializationError(format!(
+                            "Failed to deserialize payment data: {}",
+                            e
+                        ))
+                    })?)
+                } else {
+                    None
+                };
+
+                Ok(Some(Message {
+                    id: row.id,
+                    conversation_id: row.conversation_id,
+                    sender_id: row.sender_id,
+                    message_type,
+                    content: row.content,
+                    media_url: row.media_url,
+                    payment_data,
+                    reply_to_id: row.reply_to_id,
+                    created_at: row.created_at,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn update(&self, message: &Message) -> Result<Message> {
+        let message_type_str = match message.message_type {
+            MessageType::Text => "text",
+            MessageType::Image => "image",
+            MessageType::Video => "video",
+            MessageType::Audio => "audio",
+            MessageType::Payment => "payment",
+            MessageType::System => "system",
+        };
+
+        let payment_json = if let Some(ref payment_data) = message.payment_data {
+            Some(serde_json::to_value(payment_data).map_err(|e| {
+                AppError::SerializationError(format!("Failed to serialize payment data: {}", e))
+            })?)
+        } else {
+            None
+        };
+
+        let row: MessageRow = sqlx::query_as(
+            "UPDATE messages
+            SET message_type = $2, content = $3, media_url = $4, payment_data = $5, reply_to_id = $6, updated_at = $7
+            WHERE id = $1
+            RETURNING id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at")
+            .bind(message.id)
+            .bind(message_type_str)
+            .bind(&message.content)
+            .bind(&message.media_url)
+            .bind(payment_json)
+            .bind(message.reply_to_id)
+            .bind(Utc::now())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to update message: {}", e)))?;
+
+        let message_type = match row.message_type.as_str() {
+            "text" => MessageType::Text,
+            "image" => MessageType::Image,
+            "video" => MessageType::Video,
+            "audio" => MessageType::Audio,
+            "payment" => MessageType::Payment,
+            "system" => MessageType::System,
+            _ => MessageType::Text,
+        };
+
+        let payment_data = if let Some(payment_json) = row.payment_data {
+            Some(serde_json::from_value(payment_json).map_err(|e| {
+                AppError::SerializationError(format!("Failed to deserialize payment data: {}", e))
+            })?)
+        } else {
+            None
+        };
+
+        Ok(Message {
+            id: row.id,
+            conversation_id: row.conversation_id,
+            sender_id: row.sender_id,
+            message_type,
+            content: row.content,
+            media_url: row.media_url,
+            payment_data,
+            reply_to_id: row.reply_to_id,
+            created_at: row.created_at,
+        })
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM messages WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to delete message: {}", e)))?;
+        Ok(())
+    }
+
+    async fn find_by_conversation(
+        &self,
+        conversation_id: Uuid,
+        limit: i64,
+        before_id: Option<Uuid>,
+    ) -> Result<Vec<Message>> {
+        let rows: Vec<MessageRow> = if let Some(before_id) = before_id {
+            // Get the timestamp of the before_id message
+            let before_row: Option<(DateTime<Utc>,)> =
+                sqlx::query_as("SELECT created_at FROM messages WHERE id = $1")
+                    .bind(before_id)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .map_err(|e| {
+                        AppError::DatabaseError(format!("Failed to find before message: {}", e))
+                    })?;
+
+            if let Some(before_row) = before_row {
+                sqlx::query_as(
+                    "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+                    WHERE conversation_id = $1 AND created_at < $2
+                    ORDER BY created_at DESC
+                    LIMIT $3")
+                    .bind(conversation_id)
+                    .bind(before_row.0)
+                    .bind(limit)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to fetch messages: {}", e))
+                })?
+            } else {
+                Vec::new()
+            }
+        } else {
+            sqlx::query_as(
+                "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+                WHERE conversation_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2")
+                .bind(conversation_id)
+                .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch messages: {}", e)))?
+        };
+
+        let mut messages = Vec::new();
+        for row in rows {
+            let message_type = match row.message_type.as_str() {
+                "text" => MessageType::Text,
+                "image" => MessageType::Image,
+                "video" => MessageType::Video,
+                "audio" => MessageType::Audio,
+                "payment" => MessageType::Payment,
+                "system" => MessageType::System,
+                _ => MessageType::Text,
+            };
+
+            let payment_data = if let Some(payment_json) = row.payment_data {
+                Some(serde_json::from_value(payment_json).map_err(|e| {
+                    AppError::SerializationError(format!(
+                        "Failed to deserialize payment data: {}",
+                        e
+                    ))
+                })?)
+            } else {
+                None
+            };
+
+            messages.push(Message {
+                id: row.id,
+                conversation_id: row.conversation_id,
+                sender_id: row.sender_id,
+                message_type,
+                content: row.content,
+                media_url: row.media_url,
+                payment_data,
+                reply_to_id: row.reply_to_id,
+                created_at: row.created_at,
+            });
+        }
+
+        Ok(messages)
+    }
+
+    async fn mark_as_read(&self, message_id: Uuid, user_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO message_reads (message_id, user_id, read_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (message_id, user_id) DO NOTHING",
+        )
+        .bind(message_id)
+        .bind(user_id)
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to mark message as read: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn get_message_reads(&self, message_id: Uuid) -> Result<Vec<MessageRead>> {
+        let rows: Vec<MessageReadRow> =
+            sqlx::query_as("SELECT * FROM message_reads WHERE message_id = $1")
+                .bind(message_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to get message reads: {}", e))
+                })?;
+
+        let mut reads = Vec::new();
+        for row in rows {
+            reads.push(MessageRead {
+                id: row.id,
+                message_id: row.message_id,
+                user_id: row.user_id,
+                read_at: row.read_at,
+            });
+        }
+
+        Ok(reads)
+    }
+
+    async fn is_read_by_user(&self, message_id: Uuid, user_id: Uuid) -> Result<bool> {
+        let row: (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM message_reads WHERE message_id = $1 AND user_id = $2)",
+        )
+        .bind(message_id)
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to check read status: {}", e)))?;
+
+        Ok(row.0)
+    }
+
+    async fn get_unread_count(&self, conversation_id: Uuid, user_id: Uuid) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)
+            FROM messages m
+            WHERE m.conversation_id = $1
+            AND m.sender_id != $2
+            AND NOT EXISTS (
+                SELECT 1 FROM message_reads mr
+                WHERE mr.message_id = m.id AND mr.user_id = $2
+            )",
+        )
+        .bind(conversation_id)
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get unread count: {}", e)))?;
+
+        Ok(row.0)
+    }
+
+    async fn get_all_unread_count(&self, user_id: Uuid) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)
+            FROM messages m
+            INNER JOIN conversation_participants cp ON m.conversation_id = cp.conversation_id
+            WHERE cp.user_id = $1
+            AND cp.left_at IS NULL
+            AND m.sender_id != $1
+            AND NOT EXISTS (
+                SELECT 1 FROM message_reads mr
+                WHERE mr.message_id = m.id AND mr.user_id = $1
+            )",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to get all unread count: {}", e)))?;
+
+        Ok(row.0)
+    }
+
+    async fn find_by_type(
+        &self,
+        conversation_id: Uuid,
+        message_type: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Message>> {
+        let rows: Vec<MessageRow> = sqlx::query_as(
+            "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+            WHERE conversation_id = $1 AND message_type = $2
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4")
+            .bind(conversation_id)
+            .bind(message_type)
+            .bind(limit)
+            .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to find messages by type: {}", e)))?;
+
+        let mut messages = Vec::new();
+        for row in rows {
+            let msg_type = match row.message_type.as_str() {
+                "text" => MessageType::Text,
+                "image" => MessageType::Image,
+                "video" => MessageType::Video,
+                "audio" => MessageType::Audio,
+                "payment" => MessageType::Payment,
+                "system" => MessageType::System,
+                _ => MessageType::Text,
+            };
+
+            let payment_data = if let Some(payment_json) = row.payment_data {
+                Some(serde_json::from_value(payment_json).map_err(|e| {
+                    AppError::SerializationError(format!(
+                        "Failed to deserialize payment data: {}",
+                        e
+                    ))
+                })?)
+            } else {
+                None
+            };
+
+            messages.push(Message {
+                id: row.id,
+                conversation_id: row.conversation_id,
+                sender_id: row.sender_id,
+                message_type: msg_type,
+                content: row.content,
+                media_url: row.media_url,
+                payment_data,
+                reply_to_id: row.reply_to_id,
+                created_at: row.created_at,
+            });
+        }
+
+        Ok(messages)
+    }
+
+    async fn find_latest_in_conversation(&self, conversation_id: Uuid) -> Result<Option<Message>> {
+        let row: Option<MessageRow> = sqlx::query_as(
+            "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+            WHERE conversation_id = $1
+            ORDER BY created_at DESC
+            LIMIT 1")
+            .bind(conversation_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to find latest message: {}", e)))?;
+
+        match row {
+            Some(row) => {
+                let message_type = match row.message_type.as_str() {
+                    "text" => MessageType::Text,
+                    "image" => MessageType::Image,
+                    "video" => MessageType::Video,
+                    "audio" => MessageType::Audio,
+                    "payment" => MessageType::Payment,
+                    "system" => MessageType::System,
+                    _ => MessageType::Text,
+                };
+
+                let payment_data = if let Some(payment_json) = row.payment_data {
+                    Some(serde_json::from_value(payment_json).map_err(|e| {
+                        AppError::SerializationError(format!(
+                            "Failed to deserialize payment data: {}",
+                            e
+                        ))
+                    })?)
+                } else {
+                    None
+                };
+
+                Ok(Some(Message {
+                    id: row.id,
+                    conversation_id: row.conversation_id,
+                    sender_id: row.sender_id,
+                    message_type,
+                    content: row.content,
+                    media_url: row.media_url,
+                    payment_data,
+                    reply_to_id: row.reply_to_id,
+                    created_at: row.created_at,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn search_in_conversation(
+        &self,
+        conversation_id: Uuid,
+        query: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Message>> {
+        let rows: Vec<MessageRow> = sqlx::query_as(
+            "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+            WHERE conversation_id = $1 AND content ILIKE $2
+            ORDER BY created_at DESC
+            LIMIT $3 OFFSET $4")
+            .bind(conversation_id)
+            .bind(format!("%{}%", query))
+            .bind(limit)
+            .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to search messages: {}", e)))?;
+
+        let mut messages = Vec::new();
+        for row in rows {
+            let message_type = match row.message_type.as_str() {
+                "text" => MessageType::Text,
+                "image" => MessageType::Image,
+                "video" => MessageType::Video,
+                "audio" => MessageType::Audio,
+                "payment" => MessageType::Payment,
+                "system" => MessageType::System,
+                _ => MessageType::Text,
+            };
+
+            let payment_data = if let Some(payment_json) = row.payment_data {
+                Some(serde_json::from_value(payment_json).map_err(|e| {
+                    AppError::SerializationError(format!(
+                        "Failed to deserialize payment data: {}",
+                        e
+                    ))
+                })?)
+            } else {
+                None
+            };
+
+            messages.push(Message {
+                id: row.id,
+                conversation_id: row.conversation_id,
+                sender_id: row.sender_id,
+                message_type,
+                content: row.content,
+                media_url: row.media_url,
+                payment_data,
+                reply_to_id: row.reply_to_id,
+                created_at: row.created_at,
+            });
+        }
+
+        Ok(messages)
+    }
+}
+#[async_trait]
+impl WalletRepository for PostgresWalletRepository {
+    async fn create(&self, wallet: &Wallet) -> Result<Wallet> {
+        let status_str = match wallet.status {
+            WalletStatus::Active => "active",
+            WalletStatus::Suspended => "suspended",
+            WalletStatus::Locked => "locked",
+        };
+
+        let row: WalletRow = sqlx::query_as(
+            "INSERT INTO wallets (id, user_id, balance, currency, status, pin_hash, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING *")
+            .bind(wallet.id)
+            .bind(wallet.user_id)
+            .bind(wallet.balance)
+            .bind(&wallet.currency)
+            .bind(status_str)
+            .bind(&wallet.pin_hash)
+            .bind(wallet.created_at)
+            .bind(wallet.updated_at)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to create wallet: {}", e)))?;
+
+        let status = match row.status.as_str() {
+            "active" => WalletStatus::Active,
+            "suspended" => WalletStatus::Suspended,
+            "locked" => WalletStatus::Locked,
+            _ => WalletStatus::Active,
+        };
+
+        Ok(Wallet {
+            id: row.id,
+            user_id: row.user_id,
+            balance: row.balance,
+            currency: row.currency,
+            status,
+            pin_hash: row.pin_hash,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Wallet>> {
+        let row: Option<WalletRow> = sqlx::query_as("SELECT * FROM wallets WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to find wallet: {}", e)))?;
+
+        match row {
+            Some(row) => {
+                let status = match row.status.as_str() {
+                    "active" => WalletStatus::Active,
+                    "suspended" => WalletStatus::Suspended,
+                    "locked" => WalletStatus::Locked,
+                    _ => WalletStatus::Active,
+                };
+
+                Ok(Some(Wallet {
+                    id: row.id,
+                    user_id: row.user_id,
+                    balance: row.balance,
+                    currency: row.currency,
+                    status,
+                    pin_hash: row.pin_hash,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<Wallet>> {
+        let row: Option<WalletRow> = sqlx::query_as("SELECT * FROM wallets WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to find wallet by user: {}", e))
+            })?;
+
+        match row {
+            Some(row) => {
+                let status = match row.status.as_str() {
+                    "active" => WalletStatus::Active,
+                    "suspended" => WalletStatus::Suspended,
+                    "locked" => WalletStatus::Locked,
+                    _ => WalletStatus::Active,
+                };
+
+                Ok(Some(Wallet {
+                    id: row.id,
+                    user_id: row.user_id,
+                    balance: row.balance,
+                    currency: row.currency,
+                    status,
+                    pin_hash: row.pin_hash,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn update(&self, wallet: &Wallet) -> Result<Wallet> {
+        let status_str = match wallet.status {
+            WalletStatus::Active => "active",
+            WalletStatus::Suspended => "suspended",
+            WalletStatus::Locked => "locked",
+        };
+
+        let row: WalletRow = sqlx::query_as(
+            "UPDATE wallets
+            SET balance = $2, status = $3, pin_hash = $4, updated_at = $5
+            WHERE id = $1
+            RETURNING *",
+        )
+        .bind(wallet.id)
+        .bind(wallet.balance)
+        .bind(status_str)
+        .bind(&wallet.pin_hash)
+        .bind(Utc::now())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to update wallet: {}", e)))?;
+
+        let status = match row.status.as_str() {
+            "active" => WalletStatus::Active,
+            "suspended" => WalletStatus::Suspended,
+            "locked" => WalletStatus::Locked,
+            _ => WalletStatus::Active,
+        };
+
+        Ok(Wallet {
+            id: row.id,
+            user_id: row.user_id,
+            balance: row.balance,
+            currency: row.currency,
+            status,
+            pin_hash: row.pin_hash,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    async fn update_balance(&self, wallet_id: Uuid, amount: Decimal) -> Result<()> {
+        sqlx::query("UPDATE wallets SET balance = balance + $2, updated_at = $3 WHERE id = $1")
+            .bind(wallet_id)
+            .bind(amount)
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to update balance: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn credit_balance(&self, wallet_id: Uuid, amount: Decimal) -> Result<()> {
+        if amount <= Decimal::ZERO {
+            return Err(AppError::ValidationError(
+                "Credit amount must be positive".to_string(),
+            ));
+        }
+
+        sqlx::query("UPDATE wallets SET balance = balance + $2, updated_at = $3 WHERE id = $1")
+            .bind(wallet_id)
+            .bind(amount)
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to credit balance: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn debit_balance(&self, wallet_id: Uuid, amount: Decimal) -> Result<()> {
+        if amount <= Decimal::ZERO {
+            return Err(AppError::ValidationError(
+                "Debit amount must be positive".to_string(),
+            ));
+        }
+
+        // Check sufficient balance first
+        let wallet = self
+            .find_by_id(wallet_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Wallet not found".to_string()))?;
+
+        if wallet.balance < amount {
+            return Err(AppError::InsufficientFunds);
+        }
+
+        sqlx::query("UPDATE wallets SET balance = balance - $2, updated_at = $3 WHERE id = $1")
+            .bind(wallet_id)
+            .bind(amount)
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to debit balance: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn get_balance(&self, wallet_id: Uuid) -> Result<Decimal> {
+        let row: (Decimal,) = sqlx::query_as("SELECT balance FROM wallets WHERE id = $1")
+            .bind(wallet_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to get balance: {}", e)))?;
+
+        Ok(row.0)
+    }
+
+    async fn has_sufficient_balance(&self, wallet_id: Uuid, amount: Decimal) -> Result<bool> {
+        let balance = self.get_balance(wallet_id).await?;
+        Ok(balance >= amount)
+    }
+
+    async fn lock_wallet(&self, wallet_id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE wallets SET status = 'locked', updated_at = $2 WHERE id = $1")
+            .bind(wallet_id)
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to lock wallet: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn unlock_wallet(&self, wallet_id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE wallets SET status = 'active', updated_at = $2 WHERE id = $1")
+            .bind(wallet_id)
+            .bind(Utc::now())
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to unlock wallet: {}", e)))?;
+
+        Ok(())
+    }
+
+    async fn create_transaction(&self, transaction: &Transaction) -> Result<Transaction> {
+        let transaction_type_str = match transaction.transaction_type {
+            TransactionType::Transfer => "transfer",
+            TransactionType::Deposit => "deposit",
+            TransactionType::Withdrawal => "withdrawal",
+        };
+
+        let status_str = match transaction.status {
+            TransactionStatus::Pending => "pending",
+            TransactionStatus::Completed => "completed",
+            TransactionStatus::Failed => "failed",
+            TransactionStatus::Cancelled => "cancelled",
+        };
+
+        let row: TransactionRow = sqlx::query_as(
+            "INSERT INTO transactions (id, sender_wallet_id, receiver_wallet_id, transaction_type, amount, currency, status, description, reference, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *")
+            .bind(transaction.id)
+            .bind(transaction.sender_wallet_id)
+            .bind(transaction.receiver_wallet_id)
+            .bind(transaction_type_str)
+            .bind(transaction.amount)
+            .bind(&transaction.currency)
+            .bind(status_str)
+            .bind(&transaction.description)
+            .bind(&transaction.reference)
+            .bind(transaction.created_at)
+            .bind(transaction.updated_at)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to create transaction: {}", e)))?;
+
+        let transaction_type = match row.transaction_type.as_str() {
+            "transfer" => TransactionType::Transfer,
+            "deposit" => TransactionType::Deposit,
+            "withdrawal" => TransactionType::Withdrawal,
+            _ => TransactionType::Transfer,
+        };
+
+        let status = match row.status.as_str() {
+            "pending" => TransactionStatus::Pending,
+            "completed" => TransactionStatus::Completed,
+            "failed" => TransactionStatus::Failed,
+            "cancelled" => TransactionStatus::Cancelled,
+            _ => TransactionStatus::Pending,
+        };
+
+        Ok(Transaction {
+            id: row.id,
+            sender_wallet_id: row.sender_wallet_id,
+            receiver_wallet_id: row.receiver_wallet_id,
+            transaction_type,
+            amount: row.amount,
+            currency: row.currency,
+            status,
+            description: row.description,
+            reference: row.reference,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    async fn find_transaction_by_id(&self, id: Uuid) -> Result<Option<Transaction>> {
+        let row: Option<TransactionRow> =
+            sqlx::query_as("SELECT * FROM transactions WHERE id = $1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to find transaction: {}", e))
+                })?;
+
+        match row {
+            Some(row) => {
+                let transaction_type = match row.transaction_type.as_str() {
+                    "transfer" => TransactionType::Transfer,
+                    "deposit" => TransactionType::Deposit,
+                    "withdrawal" => TransactionType::Withdrawal,
+                    _ => TransactionType::Transfer,
+                };
+
+                let status = match row.status.as_str() {
+                    "pending" => TransactionStatus::Pending,
+                    "completed" => TransactionStatus::Completed,
+                    "failed" => TransactionStatus::Failed,
+                    "cancelled" => TransactionStatus::Cancelled,
+                    _ => TransactionStatus::Pending,
+                };
+
+                Ok(Some(Transaction {
+                    id: row.id,
+                    sender_wallet_id: row.sender_wallet_id,
+                    receiver_wallet_id: row.receiver_wallet_id,
+                    transaction_type,
+                    amount: row.amount,
+                    currency: row.currency,
+                    status,
+                    description: row.description,
+                    reference: row.reference,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn find_transaction_by_reference(&self, reference: &str) -> Result<Option<Transaction>> {
+        let row: Option<TransactionRow> =
+            sqlx::query_as("SELECT * FROM transactions WHERE reference = $1")
+                .bind(reference)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!(
+                        "Failed to find transaction by reference: {}",
+                        e
+                    ))
+                })?;
+
+        match row {
+            Some(row) => {
+                let transaction_type = match row.transaction_type.as_str() {
+                    "transfer" => TransactionType::Transfer,
+                    "deposit" => TransactionType::Deposit,
+                    "withdrawal" => TransactionType::Withdrawal,
+                    _ => TransactionType::Transfer,
+                };
+
+                let status = match row.status.as_str() {
+                    "pending" => TransactionStatus::Pending,
+                    "completed" => TransactionStatus::Completed,
+                    "failed" => TransactionStatus::Failed,
+                    "cancelled" => TransactionStatus::Cancelled,
+                    _ => TransactionStatus::Pending,
+                };
+
+                Ok(Some(Transaction {
+                    id: row.id,
+                    sender_wallet_id: row.sender_wallet_id,
+                    receiver_wallet_id: row.receiver_wallet_id,
+                    transaction_type,
+                    amount: row.amount,
+                    currency: row.currency,
+                    status,
+                    description: row.description,
+                    reference: row.reference,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    async fn update_transaction(&self, transaction: &Transaction) -> Result<Transaction> {
+        let transaction_type_str = match transaction.transaction_type {
+            TransactionType::Transfer => "transfer",
+            TransactionType::Deposit => "deposit",
+            TransactionType::Withdrawal => "withdrawal",
+        };
+
+        let status_str = match transaction.status {
+            TransactionStatus::Pending => "pending",
+            TransactionStatus::Completed => "completed",
+            TransactionStatus::Failed => "failed",
+            TransactionStatus::Cancelled => "cancelled",
+        };
+
+        let row: TransactionRow = sqlx::query_as(
+            "UPDATE transactions
+            SET transaction_type = $2, amount = $3, status = $4, description = $5, updated_at = $6
+            WHERE id = $1
+            RETURNING *",
+        )
+        .bind(transaction.id)
+        .bind(transaction_type_str)
+        .bind(transaction.amount)
+        .bind(status_str)
+        .bind(&transaction.description)
+        .bind(Utc::now())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to update transaction: {}", e)))?;
+
+        let transaction_type = match row.transaction_type.as_str() {
+            "transfer" => TransactionType::Transfer,
+            "deposit" => TransactionType::Deposit,
+            "withdrawal" => TransactionType::Withdrawal,
+            _ => TransactionType::Transfer,
+        };
+
+        let status = match row.status.as_str() {
+            "pending" => TransactionStatus::Pending,
+            "completed" => TransactionStatus::Completed,
+            "failed" => TransactionStatus::Failed,
+            "cancelled" => TransactionStatus::Cancelled,
+            _ => TransactionStatus::Pending,
+        };
+
+        Ok(Transaction {
+            id: row.id,
+            sender_wallet_id: row.sender_wallet_id,
+            receiver_wallet_id: row.receiver_wallet_id,
+            transaction_type,
+            amount: row.amount,
+            currency: row.currency,
+            status,
+            description: row.description,
+            reference: row.reference,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    async fn get_transaction_history(
+        &self,
+        wallet_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Transaction>> {
+        let rows: Vec<TransactionRow> = sqlx::query_as(
+            "SELECT * FROM transactions
+            WHERE sender_wallet_id = $1 OR receiver_wallet_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3",
+        )
+        .bind(wallet_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to get transaction history: {}", e))
+        })?;
+
+        let mut transactions = Vec::new();
+        for row in rows {
+            let transaction_type = match row.transaction_type.as_str() {
+                "transfer" => TransactionType::Transfer,
+                "deposit" => TransactionType::Deposit,
+                "withdrawal" => TransactionType::Withdrawal,
+                _ => TransactionType::Transfer,
+            };
+
+            let status = match row.status.as_str() {
+                "pending" => TransactionStatus::Pending,
+                "completed" => TransactionStatus::Completed,
+                "failed" => TransactionStatus::Failed,
+                "cancelled" => TransactionStatus::Cancelled,
+                _ => TransactionStatus::Pending,
+            };
+
+            transactions.push(Transaction {
+                id: row.id,
+                sender_wallet_id: row.sender_wallet_id,
+                receiver_wallet_id: row.receiver_wallet_id,
+                transaction_type,
+                amount: row.amount,
+                currency: row.currency,
+                status,
+                description: row.description,
+                reference: row.reference,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+
+        Ok(transactions)
+    }
+
+    async fn get_pending_transactions(&self, wallet_id: Uuid) -> Result<Vec<Transaction>> {
+        let rows: Vec<TransactionRow> = sqlx::query_as(
+            "SELECT * FROM transactions
+            WHERE (sender_wallet_id = $1 OR receiver_wallet_id = $1)
+            AND status = 'pending'
+            ORDER BY created_at DESC",
+        )
+        .bind(wallet_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to get pending transactions: {}", e))
+        })?;
+
+        let mut transactions = Vec::new();
+        for row in rows {
+            let transaction_type = match row.transaction_type.as_str() {
+                "transfer" => TransactionType::Transfer,
+                "deposit" => TransactionType::Deposit,
+                "withdrawal" => TransactionType::Withdrawal,
+                _ => TransactionType::Transfer,
+            };
+
+            let status = match row.status.as_str() {
+                "pending" => TransactionStatus::Pending,
+                "completed" => TransactionStatus::Completed,
+                "failed" => TransactionStatus::Failed,
+                "cancelled" => TransactionStatus::Cancelled,
+                _ => TransactionStatus::Pending,
+            };
+
+            transactions.push(Transaction {
+                id: row.id,
+                sender_wallet_id: row.sender_wallet_id,
+                receiver_wallet_id: row.receiver_wallet_id,
+                transaction_type,
+                amount: row.amount,
+                currency: row.currency,
+                status,
+                description: row.description,
+                reference: row.reference,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            });
+        }
+
+        Ok(transactions)
+    }
+
+    async fn process_transfer(
+        &self,
+        sender_wallet_id: Uuid,
+        receiver_wallet_id: Uuid,
+        amount: Decimal,
+        transaction: &Transaction,
+    ) -> Result<Transaction> {
+        // Start a database transaction for atomicity
+        let mut tx =
+            self.pool.begin().await.map_err(|e| {
+                AppError::DatabaseError(format!("Failed to start transaction: {}", e))
+            })?;
+
+        // Check sender wallet balance
+        let sender_row: (Decimal, String) =
+            sqlx::query_as("SELECT balance, status FROM wallets WHERE id = $1 FOR UPDATE")
+                .bind(sender_wallet_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to lock sender wallet: {}", e))
+                })?;
+
+        if sender_row.1 != "active" {
+            return Err(AppError::PaymentError(
+                "Sender wallet is not active".to_string(),
+            ));
+        }
+
+        if sender_row.0 < amount {
+            return Err(AppError::InsufficientFunds);
+        }
+
+        // Check receiver wallet
+        let receiver_row: (String,) =
+            sqlx::query_as("SELECT status FROM wallets WHERE id = $1 FOR UPDATE")
+                .bind(receiver_wallet_id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|e| {
+                    AppError::DatabaseError(format!("Failed to lock receiver wallet: {}", e))
+                })?;
+
+        if receiver_row.0 != "active" {
+            return Err(AppError::PaymentError(
+                "Receiver wallet is not active".to_string(),
+            ));
+        }
+
+        // Debit sender wallet
+        sqlx::query("UPDATE wallets SET balance = balance - $2, updated_at = $3 WHERE id = $1")
+            .bind(sender_wallet_id)
+            .bind(amount)
+            .bind(Utc::now())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to debit sender: {}", e)))?;
+
+        // Credit receiver wallet
+        sqlx::query("UPDATE wallets SET balance = balance + $2, updated_at = $3 WHERE id = $1")
+            .bind(receiver_wallet_id)
+            .bind(amount)
+            .bind(Utc::now())
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to credit receiver: {}", e)))?;
+
+        // Create transaction record
+        let transaction_type_str = "transfer";
+        let status_str = "completed";
+
+        let row: TransactionRow = sqlx::query_as(
+            "INSERT INTO transactions (id, sender_wallet_id, receiver_wallet_id, transaction_type, amount, currency, status, description, reference, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *")
+            .bind(transaction.id)
+            .bind(transaction.sender_wallet_id)
+            .bind(transaction.receiver_wallet_id)
+            .bind(transaction_type_str)
+            .bind(transaction.amount)
+            .bind(&transaction.currency)
+            .bind(status_str)
+            .bind(&transaction.description)
+            .bind(&transaction.reference)
+            .bind(transaction.created_at)
+            .bind(Utc::now())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| AppError::DatabaseError(format!("Failed to create transaction record: {}", e)))?;
+
+        // Commit transaction
+        tx.commit()
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to commit transfer: {}", e)))?;
+
+        Ok(Transaction {
+            id: row.id,
+            sender_wallet_id: row.sender_wallet_id,
+            receiver_wallet_id: row.receiver_wallet_id,
+            transaction_type: TransactionType::Transfer,
+            amount: row.amount,
+            currency: row.currency,
+            status: TransactionStatus::Completed,
+            description: row.description,
+            reference: row.reference,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+}
