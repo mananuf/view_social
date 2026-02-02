@@ -1,6 +1,5 @@
 use crate::api::handlers::auth_handlers::{
     login, logout, refresh_token, register, resend_verification_code, verify_registration,
-    AuthState,
 };
 use crate::server::AppState;
 use axum::{routing::post, Router};

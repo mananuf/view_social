@@ -1,9 +1,9 @@
 use crate::api::dto::{
     ConversationDTO, CreateConversationRequest, MessageDTO, PaginatedResponse, PaymentDataDTO,
-    SendMessageRequest, SuccessResponse, UserDTO,
+    SendMessageRequest, SuccessResponse,
 };
+use crate::api::handlers::user_handlers::user_to_dto;
 use crate::api::middleware::AuthUser;
-use crate::api::user_handlers::user_to_dto;
 use crate::domain::entities::{CreateMessageRequest, Message, MessageType};
 use crate::domain::errors::AppError;
 use crate::domain::repositories::{ConversationRepository, MessageRepository, UserRepository};
@@ -13,7 +13,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -164,9 +164,14 @@ pub async fn create_conversation(
                 created_at,
             };
 
-            return Ok(
-                (StatusCode::OK, Json(SuccessResponse::new(conversation_dto))).into_response(),
-            );
+            return Ok((
+                StatusCode::OK,
+                Json(SuccessResponse::new(
+                    "Conversation created successfully".to_string(),
+                    Some(serde_json::to_value(conversation_dto).unwrap()),
+                )),
+            )
+                .into_response());
         }
     }
 
@@ -222,7 +227,10 @@ pub async fn create_conversation(
 
     Ok((
         StatusCode::CREATED,
-        Json(SuccessResponse::new(conversation_dto)),
+        Json(SuccessResponse::new(
+            "Conversations retrieved successfully".to_string(),
+            Some(serde_json::to_value(conversation_dto).unwrap()),
+        )),
     )
         .into_response())
 }
@@ -310,7 +318,14 @@ pub async fn send_message(
 
     let message_dto = message_to_dto(&created_message, &state).await?;
 
-    Ok((StatusCode::CREATED, Json(SuccessResponse::new(message_dto))).into_response())
+    Ok((
+        StatusCode::CREATED,
+        Json(SuccessResponse::new(
+            "Message sent successfully".to_string(),
+            Some(serde_json::to_value(message_dto).unwrap()),
+        )),
+    )
+        .into_response())
 }
 
 // Helper function to convert Message entity to MessageDTO

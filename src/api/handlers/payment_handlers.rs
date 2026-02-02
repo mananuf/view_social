@@ -1,8 +1,8 @@
 use crate::api::dto::{
     PaginatedResponse, SetPinRequest, SuccessResponse, TransactionDTO, TransferRequest, WalletDTO,
 };
+use crate::api::handlers::user_handlers::user_to_dto;
 use crate::api::middleware::AuthUser;
-use crate::api::user_handlers::user_to_dto;
 use crate::domain::entities::{CreateTransactionRequest, Transaction, TransactionType, Wallet};
 use crate::domain::errors::AppError;
 use crate::domain::repositories::{UserRepository, WalletRepository};
@@ -50,7 +50,14 @@ pub async fn get_wallet(
 
     let wallet_dto = wallet_to_dto(&wallet);
 
-    Ok((StatusCode::OK, Json(SuccessResponse::new(wallet_dto))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Wallet retrieved successfully".to_string(),
+            Some(serde_json::to_value(wallet_dto).unwrap()),
+        )),
+    )
+        .into_response())
 }
 
 // POST /wallet/pin - Set or update wallet PIN
@@ -81,7 +88,14 @@ pub async fn set_wallet_pin(
 
     let wallet_dto = wallet_to_dto(&updated_wallet);
 
-    Ok((StatusCode::OK, Json(SuccessResponse::new(wallet_dto))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "PIN set successfully".to_string(),
+            Some(serde_json::to_value(wallet_dto).unwrap()),
+        )),
+    )
+        .into_response())
 }
 
 // POST /transfers - Create money transfer
@@ -170,7 +184,10 @@ pub async fn create_transfer(
 
     Ok((
         StatusCode::CREATED,
-        Json(SuccessResponse::new(transaction_dto)),
+        Json(SuccessResponse::new(
+            "Transfer completed successfully".to_string(),
+            Some(serde_json::to_value(transaction_dto).unwrap()),
+        )),
     )
         .into_response())
 }

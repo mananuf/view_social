@@ -3,6 +3,7 @@ use bcrypt::{hash, verify};
 
 const BCRYPT_COST: u32 = 12;
 
+#[derive(Clone)]
 pub struct PasswordService;
 
 impl PasswordService {

@@ -1,7 +1,7 @@
 use crate::domain::entities::{Message, MessageRead, Post, Transaction, User, Wallet};
 use crate::domain::errors::Result;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::DateTime;
 use rust_decimal::Decimal;
 use uuid::Uuid;
 

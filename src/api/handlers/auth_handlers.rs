@@ -5,7 +5,7 @@ use crate::api::dto::{
 use crate::application::verification::VerificationService;
 use crate::domain::auth::JwtService;
 use crate::domain::entities::{CreateUserRequest, User};
-use crate::domain::errors::{AppError, Result};
+use crate::domain::errors::AppError;
 use crate::domain::password::PasswordService;
 use crate::domain::repositories::UserRepository;
 use axum::{
@@ -14,9 +14,8 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 
 /// Authentication state containing all auth-related services
@@ -47,7 +46,7 @@ impl AuthState {
 pub async fn register(
     State(state): State<AuthState>,
     Json(payload): Json<RegisterRequest>,
-) -> Result<Response, AppError> {
+) -> std::result::Result<Response, AppError> {
     info!("Registration attempt for: {}", payload.identifier);
 
     // Validate registration type
@@ -96,8 +95,10 @@ pub async fn register(
     // Create user request
     let create_request = CreateUserRequest {
         username: payload.username.clone(),
-        email: email.unwrap_or_else(|| format!("{}@temp.local", Uuid::new_v4())), // Temporary email for phone registration
-        phone_number,
+        email: email
+            .clone()
+            .unwrap_or_else(|| format!("{}@temp.local", Uuid::new_v4())), // Temporary email for phone registration
+        phone_number: phone_number.clone(),
         password_hash,
         display_name: payload.display_name,
         bio: None,
@@ -142,7 +143,7 @@ pub async fn register(
 pub async fn verify_registration(
     State(state): State<AuthState>,
     Json(payload): Json<VerifyCodeRequest>,
-) -> Result<Response, AppError> {
+) -> std::result::Result<Response, AppError> {
     info!("Verification attempt for: {}", payload.identifier);
 
     // Verify the code
@@ -162,12 +163,12 @@ pub async fn verify_registration(
 
     let (username, email, phone_number) = match verification.verification_type {
         crate::application::verification::VerificationType::Email => (
-            format!("user_{}", user_id.to_string()[..8]),
+            format!("user_{}", &user_id.to_string()[..8]),
             verification.target.clone(),
             None,
         ),
         crate::application::verification::VerificationType::Phone => (
-            format!("user_{}", user_id.to_string()[..8]),
+            format!("user_{}", &user_id.to_string()[..8]),
             format!("{}@temp.local", user_id),
             Some(verification.target.clone()),
         ),
@@ -203,7 +204,7 @@ pub async fn verify_registration(
     let created_user = state.user_repo.create(&user).await?;
 
     // Generate JWT token
-    let token = state.jwt_service.generate_token(created_user.id)?;
+    let token = state.jwt_service.generate_access_token(created_user.id)?;
 
     info!(
         "User registration completed: {}",
@@ -226,7 +227,7 @@ pub async fn verify_registration(
 pub async fn login(
     State(state): State<AuthState>,
     Json(payload): Json<LoginRequest>,
-) -> Result<Response, AppError> {
+) -> std::result::Result<Response, AppError> {
     info!("Login attempt for: {}", payload.identifier);
 
     // Find user by username or email
@@ -260,7 +261,7 @@ pub async fn login(
     }
 
     // Generate JWT token
-    let token = state.jwt_service.generate_token(user.id)?;
+    let token = state.jwt_service.generate_access_token(user.id)?;
 
     info!("User logged in successfully: {}", user.username.value());
 
@@ -280,7 +281,7 @@ pub async fn login(
 pub async fn resend_verification_code(
     State(state): State<AuthState>,
     Json(payload): Json<ResendCodeRequest>,
-) -> Result<Response, AppError> {
+) -> std::result::Result<Response, AppError> {
     info!("Resend verification code for: {}", payload.identifier);
 
     // Determine verification type
@@ -319,7 +320,7 @@ pub async fn resend_verification_code(
 }
 
 /// Logout (invalidate token - in a real implementation, you'd maintain a blacklist)
-pub async fn logout() -> Result<Response, AppError> {
+pub async fn logout() -> std::result::Result<Response, AppError> {
     let response = SuccessResponse {
         message: "Logged out successfully".to_string(),
         data: None,
@@ -330,9 +331,9 @@ pub async fn logout() -> Result<Response, AppError> {
 
 /// Refresh JWT token
 pub async fn refresh_token(
-    State(state): State<AuthState>,
+    State(_state): State<AuthState>,
     // In a real implementation, you'd extract the current token and validate it
-) -> Result<Response, AppError> {
+) -> std::result::Result<Response, AppError> {
     // For now, return an error as this needs proper token extraction
     Err(AppError::AuthenticationError(
         "Token refresh not implemented yet".to_string(),

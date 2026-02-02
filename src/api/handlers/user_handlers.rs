@@ -31,7 +31,14 @@ pub async fn get_current_user(
 
     let user_dto = user_to_dto(&user);
 
-    Ok((StatusCode::OK, Json(SuccessResponse::new(user_dto))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "User profile retrieved successfully".to_string(),
+            Some(serde_json::to_value(user_dto).unwrap()),
+        )),
+    )
+        .into_response())
 }
 
 // PUT /users/me - Update current user profile
@@ -60,7 +67,14 @@ pub async fn update_current_user(
 
     let user_dto = user_to_dto(&updated_user);
 
-    Ok((StatusCode::OK, Json(SuccessResponse::new(user_dto))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "User profile updated successfully".to_string(),
+            Some(serde_json::to_value(user_dto).unwrap()),
+        )),
+    )
+        .into_response())
 }
 
 // GET /users/:id - Get public user profile
@@ -76,7 +90,14 @@ pub async fn get_user_by_id(
 
     let user_dto = user_to_dto(&user);
 
-    Ok((StatusCode::OK, Json(SuccessResponse::new(user_dto))).into_response())
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "User profile retrieved successfully".to_string(),
+            Some(serde_json::to_value(user_dto).unwrap()),
+        )),
+    )
+        .into_response())
 }
 
 // POST /users/:id/follow - Follow a user
@@ -161,6 +182,8 @@ pub fn user_to_dto(user: &User) -> UserDTO {
         bio: user.bio.as_ref().map(|b| b.value().to_string()),
         avatar_url: user.avatar_url.clone(),
         is_verified: user.is_verified,
+        email_verified: user.email_verified,
+        phone_verified: user.phone_verified,
         follower_count: user.follower_count,
         following_count: user.following_count,
         created_at: user.created_at,

@@ -1,8 +1,8 @@
 use crate::api::dto::{
-    CreatePostRequest, MediaAttachmentDTO, PaginatedResponse, PostDTO, SuccessResponse, UserDTO,
+    CreatePostRequest, MediaAttachmentDTO, PaginatedResponse, PostDTO, SuccessResponse,
 };
+use crate::api::handlers::user_handlers::user_to_dto;
 use crate::api::middleware::AuthUser;
-use crate::api::user_handlers::user_to_dto;
 use crate::domain::entities::{
     CreatePostRequest as DomainCreatePostRequest, MediaAttachment, Post, PostContentType,
     PostVisibility,
@@ -133,7 +133,14 @@ pub async fn create_post(
 
     let post_dto = post_to_dto(&created_post, &author, false);
 
-    Ok((StatusCode::CREATED, Json(SuccessResponse::new(post_dto))).into_response())
+    Ok((
+        StatusCode::CREATED,
+        Json(SuccessResponse::new(
+            "Post created successfully".to_string(),
+            Some(serde_json::to_value(post_dto).unwrap()),
+        )),
+    )
+        .into_response())
 }
 
 // POST /posts/:id/like - Like a post
@@ -231,15 +238,15 @@ pub async fn get_post_comments(
 
 // POST /posts/:id/comments - Add a comment (placeholder)
 pub async fn create_comment(
-    auth_user: AuthUser,
-    Path(post_id): Path<Uuid>,
+    _auth_user: AuthUser,
+    Path(_post_id): Path<Uuid>,
     State(state): State<PostState>,
-    Json(payload): Json<serde_json::Value>,
+    Json(_payload): Json<serde_json::Value>,
 ) -> Result<Response, AppError> {
     // Check if post exists
     let _post = state
         .post_repo
-        .find_by_id(post_id)
+        .find_by_id(_post_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Post not found".to_string()))?;
 

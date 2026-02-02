@@ -1,7 +1,6 @@
 use crate::domain::errors::{AppError, Result};
 use crate::domain::value_objects::{Bio, DisplayName, Email, PhoneNumber, Username};
 use chrono::{DateTime, Utc};
-use proptest::prelude::prop;
 use proptest::proptest;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
