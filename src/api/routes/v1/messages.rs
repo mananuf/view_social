@@ -1,7 +1,7 @@
 use crate::api::handlers::message_handlers::{
     create_conversation, get_conversations, get_messages, send_message,
 };
-use crate::api::middleware::auth_middleware;
+use crate::api::middleware::auth::auth_middleware;
 use crate::server::AppState;
 use axum::{
     middleware,

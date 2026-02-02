@@ -1,9 +1,10 @@
-use crate::api::dto::{
-    ConversationDTO, CreateConversationRequest, MessageDTO, PaginatedResponse, PaymentDataDTO,
-    SendMessageRequest, SuccessResponse,
+use crate::api::dto::common::{PaginatedResponse, SuccessResponse};
+use crate::api::dto::messaging::{
+    ConversationDTO, CreateConversationRequest, MessageDTO, SendMessageRequest,
 };
+use crate::api::dto::payment::PaymentDataDTO;
 use crate::api::handlers::user_handlers::user_to_dto;
-use crate::api::middleware::AuthUser;
+use crate::api::middleware::auth::AuthUser;
 use crate::domain::entities::{CreateMessageRequest, Message, MessageType};
 use crate::domain::errors::AppError;
 use crate::domain::repositories::{ConversationRepository, MessageRepository, UserRepository};

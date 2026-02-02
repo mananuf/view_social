@@ -1,3 +1,4 @@
+// Authentication middleware
 use crate::api::handlers::auth_handlers::AuthState;
 use crate::domain::errors::AppError;
 use axum::{

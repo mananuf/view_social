@@ -1,8 +1,7 @@
-use crate::api::dto::{
-    PaginatedResponse, SetPinRequest, SuccessResponse, TransactionDTO, TransferRequest, WalletDTO,
-};
+use crate::api::dto::common::{PaginatedResponse, SuccessResponse};
+use crate::api::dto::payment::{SetPinRequest, TransactionDTO, TransferRequest, WalletDTO};
 use crate::api::handlers::user_handlers::user_to_dto;
-use crate::api::middleware::AuthUser;
+use crate::api::middleware::auth::AuthUser;
 use crate::domain::entities::{CreateTransactionRequest, Transaction, TransactionType, Wallet};
 use crate::domain::errors::AppError;
 use crate::domain::repositories::{UserRepository, WalletRepository};

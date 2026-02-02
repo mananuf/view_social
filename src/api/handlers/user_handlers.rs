@@ -1,5 +1,6 @@
-use crate::api::dto::{SuccessResponse, UpdateProfileRequest, UserDTO};
-use crate::api::middleware::AuthUser;
+use crate::api::dto::common::SuccessResponse;
+use crate::api::dto::user::{UpdateProfileRequest, UserDTO};
+use crate::api::middleware::auth::AuthUser;
 use crate::domain::entities::{UpdateUserRequest, User};
 use crate::domain::errors::AppError;
 use crate::domain::repositories::UserRepository;

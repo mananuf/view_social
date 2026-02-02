@@ -1,8 +1,7 @@
-use crate::api::dto::{
-    CreatePostRequest, MediaAttachmentDTO, PaginatedResponse, PostDTO, SuccessResponse,
-};
+use crate::api::dto::common::{PaginatedResponse, SuccessResponse};
+use crate::api::dto::post::{CreatePostRequest, MediaAttachmentDTO, PostDTO};
 use crate::api::handlers::user_handlers::user_to_dto;
-use crate::api::middleware::AuthUser;
+use crate::api::middleware::auth::AuthUser;
 use crate::domain::entities::{
     CreatePostRequest as DomainCreatePostRequest, MediaAttachment, Post, PostContentType,
     PostVisibility,

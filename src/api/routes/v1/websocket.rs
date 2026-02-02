@@ -1,4 +1,4 @@
-use crate::api::middleware::auth_middleware;
+use crate::api::middleware::auth::auth_middleware;
 use crate::api::websocket::ws_handler;
 use crate::server::AppState;
 use axum::{middleware, routing::get, Router};

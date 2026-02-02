@@ -281,3 +281,80 @@ pub trait WalletRepository: Send + Sync {
         transaction: &Transaction,
     ) -> Result<Transaction>;
 }
+
+/// Mock implementation for testing
+#[cfg(test)]
+pub struct MockUserRepository {
+    // In a real mock, you'd store data in memory
+}
+
+#[cfg(test)]
+impl MockUserRepository {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+#[cfg(test)]
+#[async_trait::async_trait]
+impl UserRepository for MockUserRepository {
+    async fn create(&self, user: &User) -> Result<User> {
+        Ok(user.clone())
+    }
+
+    async fn find_by_id(&self, _id: Uuid) -> Result<Option<User>> {
+        Ok(None)
+    }
+
+    async fn find_by_username(&self, _username: &str) -> Result<Option<User>> {
+        Ok(None)
+    }
+
+    async fn find_by_email(&self, _email: &str) -> Result<Option<User>> {
+        Ok(None)
+    }
+
+    async fn find_by_phone_number(&self, _phone_number: &str) -> Result<Option<User>> {
+        Ok(None)
+    }
+
+    async fn update(&self, user: &User) -> Result<User> {
+        Ok(user.clone())
+    }
+
+    async fn delete(&self, _id: Uuid) -> Result<()> {
+        Ok(())
+    }
+
+    async fn username_exists(&self, _username: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    async fn email_exists(&self, _email: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    async fn search(&self, _query: &str, _limit: i64, _offset: i64) -> Result<Vec<User>> {
+        Ok(vec![])
+    }
+
+    async fn get_followers(&self, _user_id: Uuid, _limit: i64, _offset: i64) -> Result<Vec<User>> {
+        Ok(vec![])
+    }
+
+    async fn get_following(&self, _user_id: Uuid, _limit: i64, _offset: i64) -> Result<Vec<User>> {
+        Ok(vec![])
+    }
+
+    async fn is_following(&self, _follower_id: Uuid, _following_id: Uuid) -> Result<bool> {
+        Ok(false)
+    }
+
+    async fn follow(&self, _follower_id: Uuid, _following_id: Uuid) -> Result<()> {
+        Ok(())
+    }
+
+    async fn unfollow(&self, _follower_id: Uuid, _following_id: Uuid) -> Result<()> {
+        Ok(())
+    }
+}

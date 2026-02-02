@@ -1,7 +1,8 @@
-use crate::api::dto::{
+use crate::api::dto::auth::{
     LoginRequest, LoginResponse, RegisterRequest, RegisterResponse, ResendCodeRequest,
-    SuccessResponse, VerifyCodeRequest,
+    VerifyCodeRequest,
 };
+use crate::api::dto::common::SuccessResponse;
 use crate::application::verification::VerificationService;
 use crate::domain::auth::JwtService;
 use crate::domain::entities::{CreateUserRequest, User};
