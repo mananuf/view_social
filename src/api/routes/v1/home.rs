@@ -16,7 +16,13 @@ async fn home_handler() -> impl IntoResponse {
         description: "Social media platform with integrated payments",
     };
 
-    (StatusCode::OK, Json(SuccessResponse::new(welcome)))
+    (
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Welcome to View Social API".to_string(),
+            Some(serde_json::to_value(welcome).unwrap()),
+        )),
+    )
 }
 
 ///

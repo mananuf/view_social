@@ -1,8 +1,9 @@
-use crate::api::message_handlers::MessageState;
-use crate::api::middleware::AuthState;
-use crate::api::payment_handlers::PaymentState;
-use crate::api::post_handlers::PostState;
+use crate::api::handlers::auth_handlers::AuthState;
+use crate::api::handlers::message_handlers::MessageState;
+use crate::api::handlers::payment_handlers::PaymentState;
+use crate::api::handlers::post_handlers::PostState;
 use crate::api::websocket::WebSocketState;
+use crate::application::verification::VerificationService;
 use crate::config::Config;
 use crate::domain::auth::JwtService;
 use crate::infrastructure::database::{
@@ -33,17 +34,11 @@ impl AppState {
 
         tracing::info!("✅ Database connection pool initialized");
 
-        // Initialize JWT service
-        let jwt_service = JwtService::new(&config.jwt_secret);
-        let auth_state = AuthState::new(jwt_service);
-
-        tracing::info!("✅ JWT authentication service initialized");
-
-        // Initialize repositories
-        let post_repo = Arc::new(PostgresPostRepository::new(pool.clone()))
-            as Arc<dyn crate::domain::repositories::PostRepository>;
+        // Initialize repositories first
         let user_repo = Arc::new(PostgresUserRepository::new(pool.clone()))
             as Arc<dyn crate::domain::repositories::UserRepository>;
+        let post_repo = Arc::new(PostgresPostRepository::new(pool.clone()))
+            as Arc<dyn crate::domain::repositories::PostRepository>;
         let conversation_repo = Arc::new(PostgresConversationRepository::new(pool.clone()))
             as Arc<dyn crate::domain::repositories::ConversationRepository>;
         let message_repo = Arc::new(PostgresMessageRepository::new(pool.clone()))
@@ -52,6 +47,20 @@ impl AppState {
             as Arc<dyn crate::domain::repositories::WalletRepository>;
 
         tracing::info!("✅ Repository layer initialized");
+
+        // Initialize JWT service
+        let jwt_service = JwtService::new(&config.jwt_secret);
+
+        // Initialize verification service
+        let verification_service =
+            Arc::new(VerificationService::new().map_err(|e| {
+                anyhow::anyhow!("Failed to initialize verification service: {}", e)
+            })?);
+
+        // Initialize auth state
+        let auth_state = AuthState::new(user_repo.clone(), jwt_service, verification_service);
+
+        tracing::info!("✅ Authentication and verification services initialized");
 
         // Create domain-specific states
         let post_state = PostState {

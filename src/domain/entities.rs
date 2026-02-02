@@ -12,10 +12,13 @@ pub struct User {
     pub username: Username,
     pub email: Email,
     pub phone_number: Option<PhoneNumber>,
+    pub password_hash: String,
     pub display_name: Option<DisplayName>,
     pub bio: Option<Bio>,
     pub avatar_url: Option<String>,
     pub is_verified: bool,
+    pub email_verified: bool,
+    pub phone_verified: bool,
     pub follower_count: i32,
     pub following_count: i32,
     pub created_at: DateTime<Utc>,
@@ -27,6 +30,7 @@ pub struct CreateUserRequest {
     pub username: String,
     pub email: String,
     pub phone_number: Option<String>,
+    pub password_hash: String,
     pub display_name: Option<String>,
     pub bio: Option<String>,
 }
@@ -68,10 +72,13 @@ impl User {
             username,
             email,
             phone_number,
+            password_hash: request.password_hash,
             display_name,
             bio,
             avatar_url: None,
             is_verified: false,
+            email_verified: false,
+            phone_verified: false,
             follower_count: 0,
             following_count: 0,
             created_at: now,
@@ -149,6 +156,20 @@ impl User {
             .as_ref()
             .map(|name| name.value().to_string())
             .unwrap_or_else(|| self.username.value().to_string())
+    }
+
+    pub fn verify_email(&mut self) {
+        self.email_verified = true;
+        self.updated_at = Utc::now();
+    }
+
+    pub fn verify_phone(&mut self) {
+        self.phone_verified = true;
+        self.updated_at = Utc::now();
+    }
+
+    pub fn is_fully_verified(&self) -> bool {
+        self.email_verified && (self.phone_number.is_none() || self.phone_verified)
     }
 }
 

@@ -1,7 +1,7 @@
-use crate::api::middleware::auth_middleware;
-use crate::api::post_handlers::{
+use crate::api::handlers::post_handlers::{
     create_comment, create_post, get_feed, get_post_comments, like_post, unlike_post,
 };
+use crate::api::middleware::auth_middleware;
 use crate::server::AppState;
 use axum::{
     middleware,

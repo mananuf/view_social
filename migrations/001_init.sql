@@ -13,6 +13,8 @@ CREATE TABLE users (
     bio TEXT,
     avatar_url TEXT,
     is_verified BOOLEAN DEFAULT FALSE,
+    email_verified BOOLEAN DEFAULT FALSE,
+    phone_verified BOOLEAN DEFAULT FALSE,
     follower_count INTEGER DEFAULT 0,
     following_count INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

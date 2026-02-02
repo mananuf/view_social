@@ -1,3 +1,9 @@
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde_json::json;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -52,6 +58,9 @@ pub enum AppError {
 
     #[error("Configuration error: {0}")]
     ConfigurationError(String),
+
+    #[error("External service error: {0}")]
+    ExternalServiceError(String),
 }
 
 // Error conversion traits for external libraries
@@ -134,6 +143,7 @@ impl AppError {
             AppError::Timeout | AppError::NetworkError(_) => 504,
             AppError::PaymentError(_) => 402,
             AppError::InsufficientFunds => 402,
+            AppError::ExternalServiceError(_) => 502,
         }
     }
 
@@ -156,6 +166,25 @@ impl AppError {
             AppError::NetworkError(_) => "NETWORK_ERROR",
             AppError::SerializationError(_) => "SERIALIZATION_ERROR",
             AppError::ConfigurationError(_) => "CONFIGURATION_ERROR",
+            AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
         }
+    }
+}
+
+// Implement IntoResponse for AppError to make it work with Axum
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let status_code =
+            StatusCode::from_u16(self.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = Json(json!({
+            "success": false,
+            "error": {
+                "code": self.error_code(),
+                "message": self.to_string(),
+            }
+        }));
+
+        (status_code, body).into_response()
     }
 }

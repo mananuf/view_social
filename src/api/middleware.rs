@@ -1,4 +1,4 @@
-use crate::domain::auth::JwtService;
+use crate::api::handlers::auth_handlers::AuthState;
 use crate::domain::errors::AppError;
 use axum::{
     extract::{Request, State},
@@ -8,21 +8,7 @@ use axum::{
     Json,
 };
 use serde_json::json;
-use std::sync::Arc;
 use uuid::Uuid;
-
-#[derive(Clone)]
-pub struct AuthState {
-    pub jwt_service: Arc<JwtService>,
-}
-
-impl AuthState {
-    pub fn new(jwt_service: JwtService) -> Self {
-        Self {
-            jwt_service: Arc::new(jwt_service),
-        }
-    }
-}
 
 // Extension type to store authenticated user ID in request
 #[derive(Clone, Debug)]

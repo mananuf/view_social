@@ -1,7 +1,7 @@
-use crate::api::middleware::auth_middleware;
-use crate::api::payment_handlers::{
+use crate::api::handlers::payment_handlers::{
     create_transfer, get_transaction_history, get_wallet, set_wallet_pin,
 };
+use crate::api::middleware::auth_middleware;
 use crate::server::AppState;
 use axum::{
     middleware,

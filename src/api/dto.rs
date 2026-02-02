@@ -1,6 +1,5 @@
 // Data Transfer Objects for API requests and responses
 use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -11,16 +10,46 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
     pub username: String,
-    pub email: String,
     pub password: String,
-    pub phone_number: Option<String>,
+    pub identifier: String,        // email or phone number
+    pub registration_type: String, // "email" or "phone"
     pub display_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisterResponse {
+    pub message: String,
+    pub verification_id: Uuid,
+    pub user_id: Uuid,
+    pub verification_type: String,
+    pub identifier: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VerifyCodeRequest {
+    pub identifier: String, // email or phone number
+    pub code: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResendCodeRequest {
+    pub identifier: String, // email or phone number
 }
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
-    pub username_or_email: String,
+    pub identifier: String, // username, email, or phone
     pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub token: String,
+    pub user_id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub email_verified: bool,
+    pub phone_verified: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +85,8 @@ pub struct UserDTO {
     pub bio: Option<String>,
     pub avatar_url: Option<String>,
     pub is_verified: bool,
+    pub email_verified: bool,
+    pub phone_verified: bool,
     pub follower_count: i32,
     pub following_count: i32,
     pub created_at: DateTime<Utc>,
@@ -223,9 +254,9 @@ pub struct TransactionDTO {
 // ============================================================================
 
 #[derive(Debug, Serialize)]
-pub struct SuccessResponse<T> {
-    pub success: bool,
-    pub data: T,
+pub struct SuccessResponse {
+    pub message: String,
+    pub data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -255,12 +286,9 @@ pub struct PaginationMeta {
     pub has_more: bool,
 }
 
-impl<T> SuccessResponse<T> {
-    pub fn new(data: T) -> Self {
-        Self {
-            success: true,
-            data,
-        }
+impl SuccessResponse {
+    pub fn new(message: String, data: Option<serde_json::Value>) -> Self {
+        Self { message, data }
     }
 }
 

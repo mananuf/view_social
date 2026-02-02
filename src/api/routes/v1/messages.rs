@@ -1,4 +1,4 @@
-use crate::api::message_handlers::{
+use crate::api::handlers::message_handlers::{
     create_conversation, get_conversations, get_messages, send_message,
 };
 use crate::api::middleware::auth_middleware;

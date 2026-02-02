@@ -25,10 +25,13 @@ impl PostgresUserRepository {
             username: Username::new(model.username)?,
             email: Email::new(model.email)?,
             phone_number: model.phone_number.map(PhoneNumber::new).transpose()?,
+            password_hash: model.password_hash,
             display_name: model.display_name.map(DisplayName::new).transpose()?,
             bio: model.bio.map(Bio::new).transpose()?,
             avatar_url: model.avatar_url,
             is_verified: model.is_verified,
+            email_verified: model.email_verified,
+            phone_verified: model.phone_verified,
             follower_count: model.follower_count,
             following_count: model.following_count,
             created_at: model.created_at,
@@ -41,16 +44,19 @@ impl PostgresUserRepository {
 impl UserRepository for PostgresUserRepository {
     async fn create(&self, user: &User) -> Result<User> {
         sqlx::query(
-            "INSERT INTO users (id, username, email, phone_number, display_name, bio, avatar_url, is_verified, follower_count, following_count, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)")
+            "INSERT INTO users (id, username, email, phone_number, password_hash, display_name, bio, avatar_url, is_verified, email_verified, phone_verified, follower_count, following_count, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)")
             .bind(user.id)
             .bind(user.username.value())
             .bind(user.email.value())
             .bind(user.phone_number.as_ref().map(|p| p.value()))
+            .bind(&user.password_hash)
             .bind(user.display_name.as_ref().map(|d| d.value()))
             .bind(user.bio.as_ref().map(|b| b.value()))
             .bind(user.avatar_url.clone())
             .bind(user.is_verified)
+            .bind(user.email_verified)
+            .bind(user.phone_verified)
             .bind(user.follower_count)
             .bind(user.following_count)
             .bind(user.created_at)
@@ -110,18 +116,21 @@ impl UserRepository for PostgresUserRepository {
     async fn update(&self, user: &User) -> Result<User> {
         let model: UserModel = sqlx::query_as(
             "UPDATE users 
-            SET username = $2, email = $3, phone_number = $4, display_name = $5, bio = $6, 
-                avatar_url = $7, is_verified = $8, follower_count = $9, following_count = $10, updated_at = $11
+            SET username = $2, email = $3, phone_number = $4, password_hash = $5, display_name = $6, bio = $7, 
+                avatar_url = $8, is_verified = $9, email_verified = $10, phone_verified = $11, follower_count = $12, following_count = $13, updated_at = $14
             WHERE id = $1
             RETURNING *")
             .bind(user.id)
             .bind(user.username.value())
             .bind(user.email.value())
             .bind(user.phone_number.as_ref().map(|p| p.value()))
+            .bind(&user.password_hash)
             .bind(user.display_name.as_ref().map(|d| d.value()))
             .bind(user.bio.as_ref().map(|b| b.value()))
             .bind(user.avatar_url.clone())
             .bind(user.is_verified)
+            .bind(user.email_verified)
+            .bind(user.phone_verified)
             .bind(user.follower_count)
             .bind(user.following_count)
             .bind(user.updated_at)

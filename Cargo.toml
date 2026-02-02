@@ -58,6 +58,16 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Environment
 dotenvy = "0.15"
+
+# Email
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "tokio1-rustls-tls"] }
+
+# HTTP Client for SMS
+reqwest = { version = "0.11", features = ["json"] }
+
+# Random number generation
+rand = "0.8"
+
 # Rate limiting
 governor = "0.6"
 proptest = "1.4"
