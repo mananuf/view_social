@@ -176,7 +176,11 @@ pub async fn verify_registration(
     };
 
     // Create a temporary password hash (user will need to set a proper password later)
-    let temp_password = format!("temp_{}", Uuid::new_v4());
+    // Generate a temporary password that meets validation requirements
+    let temp_password = format!(
+        "TempPass123_{}",
+        Uuid::new_v4().to_string().replace('-', "")[..8].to_uppercase()
+    );
     let password_hash = state.password_service.hash_password(&temp_password)?;
 
     let create_request = CreateUserRequest {
