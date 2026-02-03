@@ -1,5 +1,4 @@
-import 'package:equatable/equatable.dart';
-import '../../../../shared/models/user_model.dart';
+part of 'auth_bloc.dart';
 
 abstract class AuthState extends Equatable {
   const AuthState();
@@ -8,29 +7,26 @@ abstract class AuthState extends Equatable {
   List<Object?> get props => [];
 }
 
-class AuthInitial extends AuthState {
-  const AuthInitial();
-}
+class AuthInitial extends AuthState {}
 
-class AuthLoading extends AuthState {
-  const AuthLoading();
-}
+class AuthLoading extends AuthState {}
 
-class AuthAuthenticated extends AuthState {
-  final UserModel user;
-  final String accessToken;
+class AuthSuccess extends AuthState {
+  final User user;
 
-  const AuthAuthenticated({
-    required this.user,
-    required this.accessToken,
-  });
+  const AuthSuccess(this.user);
 
   @override
-  List<Object> get props => [user, accessToken];
+  List<Object?> get props => [user];
 }
 
-class AuthUnauthenticated extends AuthState {
-  const AuthUnauthenticated();
+class RegisterSuccess extends AuthState {
+  final RegisterResponse response;
+
+  const RegisterSuccess(this.response);
+
+  @override
+  List<Object?> get props => [response];
 }
 
 class AuthError extends AuthState {
@@ -39,5 +35,7 @@ class AuthError extends AuthState {
   const AuthError(this.message);
 
   @override
-  List<Object> get props => [message];
+  List<Object?> get props => [message];
 }
+
+class ResendVerificationSuccess extends AuthState {}

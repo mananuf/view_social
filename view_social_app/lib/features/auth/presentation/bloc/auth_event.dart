@@ -1,4 +1,4 @@
-import 'package:equatable/equatable.dart';
+part of 'auth_bloc.dart';
 
 abstract class AuthEvent extends Equatable {
   const AuthEvent();
@@ -7,44 +7,60 @@ abstract class AuthEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-class AuthCheckRequested extends AuthEvent {
-  const AuthCheckRequested();
-}
-
-class AuthLoginRequested extends AuthEvent {
-  final String email;
-  final String password;
-
-  const AuthLoginRequested({
-    required this.email,
-    required this.password,
-  });
-
-  @override
-  List<Object> get props => [email, password];
-}
-
-class AuthRegisterRequested extends AuthEvent {
+class RegisterEvent extends AuthEvent {
   final String username;
-  final String email;
   final String password;
-  final String? phoneNumber;
+  final String identifier;
+  final String registrationType;
+  final String? displayName;
 
-  const AuthRegisterRequested({
+  const RegisterEvent({
     required this.username,
-    required this.email,
     required this.password,
-    this.phoneNumber,
+    required this.identifier,
+    required this.registrationType,
+    this.displayName,
   });
 
   @override
-  List<Object?> get props => [username, email, password, phoneNumber];
+  List<Object?> get props => [
+    username,
+    password,
+    identifier,
+    registrationType,
+    displayName,
+  ];
 }
 
-class AuthLogoutRequested extends AuthEvent {
-  const AuthLogoutRequested();
+class VerifyEvent extends AuthEvent {
+  final String identifier;
+  final String code;
+
+  const VerifyEvent({required this.identifier, required this.code});
+
+  @override
+  List<Object?> get props => [identifier, code];
 }
 
-class AuthTokenRefreshRequested extends AuthEvent {
-  const AuthTokenRefreshRequested();
+class LoginEvent extends AuthEvent {
+  final String identifier;
+  final String password;
+
+  const LoginEvent({required this.identifier, required this.password});
+
+  @override
+  List<Object?> get props => [identifier, password];
+}
+
+class LogoutEvent extends AuthEvent {
+  const LogoutEvent();
+}
+
+class ResendVerificationEvent extends AuthEvent {
+  final String identifier;
+
+  const ResendVerificationEvent({required this.identifier});
+
+  @override
+  List<Object?> get props => [identifier];
 }

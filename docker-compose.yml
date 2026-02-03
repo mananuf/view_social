@@ -36,6 +36,7 @@ services:
     container_name: view-backend
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      BASE_URL: ${BASE_URL}
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret}
@@ -45,7 +46,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       FROM_EMAIL: ${FROM_EMAIL}
       FROM_NAME: ${FROM_NAME}
-      SMS_PROVIDER: ${SMS_PROVIDER:}
+      SMS_PROVIDER: ${SMS_PROVIDER}
       SMS_API_KEY: ${SMS_API_KEY}
       SMS_API_SECRET: ${SMS_API_SECRET}
       SMS_SENDER_ID: ${SMS_SENDER_ID}
