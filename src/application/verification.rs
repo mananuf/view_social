@@ -92,11 +92,18 @@ impl VerificationStorage {
 
     pub async fn store(&self, code: VerificationCode) {
         let mut codes = self.codes.write().await;
+        println!(
+            "📦 Storing verification code for: {} (Code: {})",
+            code.target, code.code
+        );
         codes.insert(code.target.clone(), code);
+        println!("📦 Total stored codes: {}", codes.len());
     }
 
     pub async fn get(&self, target: &str) -> Option<VerificationCode> {
         let codes = self.codes.read().await;
+        println!("🔍 Looking for verification code for: {}", target);
+        println!("🔍 Available keys: {:?}", codes.keys().collect::<Vec<_>>());
         codes.get(target).cloned()
     }
 
@@ -145,9 +152,15 @@ impl VerificationService {
         user_name: &str,
         user_id: Option<Uuid>,
     ) -> Result<Uuid> {
+        println!("📧 Sending email verification to: {}", email);
+
         // Check if there's already a recent verification code
         if let Some(existing) = self.storage.get(email).await {
             if existing.is_valid() {
+                println!(
+                    "⚠️ Verification code already exists and is valid for: {}",
+                    email
+                );
                 return Err(AppError::ValidationError(
                     "Verification code already sent. Please wait before requesting a new one."
                         .to_string(),
@@ -158,6 +171,11 @@ impl VerificationService {
         let verification = VerificationCode::new_email(email, user_id);
         let verification_id = verification.id;
 
+        println!(
+            "📧 Generated verification code: {} for email: {}",
+            verification.code, email
+        );
+
         // Generate email template
         let template = self
             .email_service
@@ -167,6 +185,8 @@ impl VerificationService {
         self.email_service
             .send_email(email, Some(user_name), template)
             .map_err(|e| AppError::ExternalServiceError(format!("Failed to send email: {}", e)))?;
+
+        println!("📧 Email sent successfully to: {}", email);
 
         // Store verification code
         self.storage.store(verification).await;
@@ -203,11 +223,30 @@ impl VerificationService {
 
     /// Verify code
     pub async fn verify_code(&self, target: &str, input_code: &str) -> Result<VerificationCode> {
-        let mut verification = self
-            .storage
-            .get(target)
-            .await
-            .ok_or_else(|| AppError::NotFound("Verification code not found".to_string()))?;
+        println!("🔍 Verifying code for target: {}", target);
+        println!("🔍 Input code: {}", input_code);
+
+        // Debug: Print all stored codes
+        let codes = self.storage.codes.read().await;
+        println!("🔍 Currently stored verification codes:");
+        for (key, code) in codes.iter() {
+            println!(
+                "  - Key: '{}', Code: '{}', Type: {:?}, Expired: {}, Valid: {}",
+                key,
+                code.code,
+                code.verification_type,
+                code.is_expired(),
+                code.is_valid()
+            );
+        }
+        drop(codes); // Release the read lock
+
+        let mut verification = self.storage.get(target).await.ok_or_else(|| {
+            println!("❌ Verification code not found for target: {}", target);
+            AppError::NotFound("Verification code not found".to_string())
+        })?;
+
+        println!("✅ Found verification code: {}", verification.code);
 
         if !verification.verify(input_code) {
             // Update the verification in storage with incremented attempts
@@ -229,6 +268,8 @@ impl VerificationService {
                 "Invalid verification code".to_string(),
             ));
         }
+
+        println!("✅ Verification successful for: {}", target);
 
         // Remove the verified code from storage
         self.storage.remove(target).await;
