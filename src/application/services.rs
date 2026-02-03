@@ -1,6 +1,9 @@
-use crate::domain::entities::{UpdateUserRequest, User};
+use crate::domain::entities::{Post, UpdateUserRequest, User};
 use crate::domain::errors::{AppError, Result};
-use crate::domain::repositories::{UserRepository, WalletRepository};
+use crate::domain::repositories::{PostRepository, UserRepository, WalletRepository};
+use crate::infrastructure::cache::{CacheConfig, RedisCache};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -8,6 +11,478 @@ use uuid::Uuid;
 pub struct UserManagementService {
     user_repository: Arc<dyn UserRepository>,
     wallet_repository: Arc<dyn WalletRepository>,
+}
+
+/// Feed generation service for creating and managing user feeds
+pub struct FeedGenerationService {
+    post_repository: Arc<dyn PostRepository>,
+    user_repository: Arc<dyn UserRepository>,
+    cache: Option<RedisCache>,
+}
+
+/// Feed sorting strategy
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FeedSortStrategy {
+    Chronological,
+    Algorithmic,
+}
+
+/// Feed filter options
+#[derive(Debug, Clone)]
+pub struct FeedFilters {
+    pub reels_only: bool,
+    pub exclude_reels: bool,
+    pub content_types: Option<Vec<String>>,
+    pub min_engagement: Option<i32>,
+}
+
+impl Default for FeedFilters {
+    fn default() -> Self {
+        Self {
+            reels_only: false,
+            exclude_reels: false,
+            content_types: None,
+            min_engagement: None,
+        }
+    }
+}
+
+/// Cached feed item for efficient storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedFeedItem {
+    pub post_id: Uuid,
+    pub user_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub engagement_score: f64,
+    pub is_reel: bool,
+    pub content_type: String,
+}
+
+impl From<&Post> for CachedFeedItem {
+    fn from(post: &Post) -> Self {
+        let content_type = match post.content_type {
+            crate::domain::entities::PostContentType::Text => "text",
+            crate::domain::entities::PostContentType::Image => "image",
+            crate::domain::entities::PostContentType::Video => "video",
+            crate::domain::entities::PostContentType::Mixed => "mixed",
+        };
+
+        Self {
+            post_id: post.id,
+            user_id: post.user_id,
+            created_at: post.created_at,
+            engagement_score: calculate_engagement_score(post),
+            is_reel: post.is_reel,
+            content_type: content_type.to_string(),
+        }
+    }
+}
+
+/// Calculate engagement score for algorithmic sorting
+fn calculate_engagement_score(post: &Post) -> f64 {
+    let total_engagement = post.like_count + post.comment_count + (post.reshare_count * 2);
+    let hours_since_creation = (Utc::now() - post.created_at).num_hours() as f64;
+
+    // Decay factor to prioritize recent posts
+    let time_decay = (-hours_since_creation / 24.0).exp();
+
+    // Base score from engagement
+    let engagement_score = total_engagement as f64;
+
+    // Apply time decay and boost for reels
+    let mut final_score = engagement_score * time_decay;
+
+    if post.is_reel {
+        final_score *= 1.5; // Boost reels in algorithmic feed
+    }
+
+    final_score
+}
+
+impl FeedGenerationService {
+    pub fn new(
+        post_repository: Arc<dyn PostRepository>,
+        user_repository: Arc<dyn UserRepository>,
+        cache: Option<RedisCache>,
+    ) -> Self {
+        Self {
+            post_repository,
+            user_repository,
+            cache,
+        }
+    }
+
+    /// Generate feed for a user with specified strategy and filters
+    pub async fn generate_feed(
+        &self,
+        user_id: Uuid,
+        strategy: FeedSortStrategy,
+        filters: FeedFilters,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Post>> {
+        // Validate pagination parameters
+        let limit = limit.min(100).max(1);
+        let offset = offset.max(0);
+
+        // Try to get from cache first if caching is enabled
+        if let Some(ref cache) = self.cache {
+            let cache_key = self.generate_cache_key(user_id, &strategy, &filters, limit, offset);
+
+            if let Ok(Some(cached_items)) = cache.get::<Vec<CachedFeedItem>>(&cache_key) {
+                // Convert cached items back to full posts
+                return self.hydrate_cached_feed(cached_items).await;
+            }
+        }
+
+        // Cache miss or no cache - generate feed from database
+        let posts = match strategy {
+            FeedSortStrategy::Chronological => {
+                self.generate_chronological_feed(user_id, &filters, limit, offset)
+                    .await?
+            }
+            FeedSortStrategy::Algorithmic => {
+                self.generate_algorithmic_feed(user_id, &filters, limit, offset)
+                    .await?
+            }
+        };
+
+        // Cache the results if caching is enabled
+        if let Some(ref cache) = self.cache {
+            let cache_key = self.generate_cache_key(user_id, &strategy, &filters, limit, offset);
+            let cached_items: Vec<CachedFeedItem> =
+                posts.iter().map(CachedFeedItem::from).collect();
+
+            // Cache for 5 minutes (feed data changes frequently)
+            if let Err(e) = cache.set(&cache_key, &cached_items, CacheConfig::FEED_TTL) {
+                tracing::warn!("Failed to cache feed for user {}: {}", user_id, e);
+            }
+        }
+
+        Ok(posts)
+    }
+
+    /// Generate chronological feed (newest first)
+    async fn generate_chronological_feed(
+        &self,
+        user_id: Uuid,
+        filters: &FeedFilters,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Post>> {
+        let mut posts = if filters.reels_only {
+            // Get reels only from followed users
+            self.post_repository
+                .find_reels(Some(user_id), limit, offset)
+                .await?
+        } else {
+            // Get all posts from followed users
+            self.post_repository
+                .find_feed(user_id, limit, offset)
+                .await?
+        };
+
+        // Apply additional filters
+        posts = self.apply_filters(posts, filters);
+
+        // Sort chronologically (newest first) - should already be sorted by database
+        posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        Ok(posts)
+    }
+
+    /// Generate algorithmic feed (engagement-based with time decay)
+    async fn generate_algorithmic_feed(
+        &self,
+        user_id: Uuid,
+        filters: &FeedFilters,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Post>> {
+        // Get more posts than requested to allow for better algorithmic sorting
+        let fetch_limit = (limit * 3).min(300);
+
+        let mut posts = if filters.reels_only {
+            self.post_repository
+                .find_reels(Some(user_id), fetch_limit, 0)
+                .await?
+        } else {
+            self.post_repository
+                .find_feed(user_id, fetch_limit, 0)
+                .await?
+        };
+
+        // Apply filters before sorting
+        posts = self.apply_filters(posts, filters);
+
+        // Sort by engagement score (algorithmic)
+        posts.sort_by(|a, b| {
+            let score_a = calculate_engagement_score(a);
+            let score_b = calculate_engagement_score(b);
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Apply pagination after sorting
+        let start = offset as usize;
+        let end = (start + limit as usize).min(posts.len());
+
+        if start >= posts.len() {
+            return Ok(vec![]);
+        }
+
+        Ok(posts[start..end].to_vec())
+    }
+
+    /// Apply content filters to posts
+    fn apply_filters(&self, mut posts: Vec<Post>, filters: &FeedFilters) -> Vec<Post> {
+        posts.retain(|post| {
+            // Filter by reel preference
+            if filters.reels_only && !post.is_reel {
+                return false;
+            }
+            if filters.exclude_reels && post.is_reel {
+                return false;
+            }
+
+            // Filter by content types
+            if let Some(ref content_types) = filters.content_types {
+                let post_content_type = match post.content_type {
+                    crate::domain::entities::PostContentType::Text => "text",
+                    crate::domain::entities::PostContentType::Image => "image",
+                    crate::domain::entities::PostContentType::Video => "video",
+                    crate::domain::entities::PostContentType::Mixed => "mixed",
+                };
+
+                if !content_types.contains(&post_content_type.to_string()) {
+                    return false;
+                }
+            }
+
+            // Filter by minimum engagement
+            if let Some(min_engagement) = filters.min_engagement {
+                let total_engagement = post.like_count + post.comment_count + post.reshare_count;
+                if total_engagement < min_engagement {
+                    return false;
+                }
+            }
+
+            true
+        });
+
+        posts
+    }
+
+    /// Generate cache key for feed
+    fn generate_cache_key(
+        &self,
+        user_id: Uuid,
+        strategy: &FeedSortStrategy,
+        filters: &FeedFilters,
+        limit: i64,
+        offset: i64,
+    ) -> String {
+        let strategy_str = match strategy {
+            FeedSortStrategy::Chronological => "chrono",
+            FeedSortStrategy::Algorithmic => "algo",
+        };
+
+        let mut key_parts = vec![
+            format!("feed:{}:{}", user_id, strategy_str),
+            format!("limit:{}", limit),
+            format!("offset:{}", offset),
+        ];
+
+        if filters.reels_only {
+            key_parts.push("reels_only".to_string());
+        }
+        if filters.exclude_reels {
+            key_parts.push("no_reels".to_string());
+        }
+        if let Some(ref content_types) = filters.content_types {
+            key_parts.push(format!("types:{}", content_types.join(",")));
+        }
+        if let Some(min_engagement) = filters.min_engagement {
+            key_parts.push(format!("min_eng:{}", min_engagement));
+        }
+
+        key_parts.join(":")
+    }
+
+    /// Convert cached feed items back to full posts
+    async fn hydrate_cached_feed(&self, cached_items: Vec<CachedFeedItem>) -> Result<Vec<Post>> {
+        let mut posts = Vec::new();
+
+        for item in cached_items {
+            if let Some(post) = self.post_repository.find_by_id(item.post_id).await? {
+                posts.push(post);
+            }
+        }
+
+        Ok(posts)
+    }
+
+    /// Get reels feed specifically
+    pub async fn get_reels_feed(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Post>> {
+        let filters = FeedFilters {
+            reels_only: true,
+            ..Default::default()
+        };
+
+        // Use algorithmic sorting for reels to promote engaging content
+        self.generate_feed(
+            user_id,
+            FeedSortStrategy::Algorithmic,
+            filters,
+            limit,
+            offset,
+        )
+        .await
+    }
+
+    /// Get trending posts (public posts with high engagement)
+    pub async fn get_trending_posts(&self, limit: i64, offset: i64) -> Result<Vec<Post>> {
+        // Try cache first
+        if let Some(ref cache) = self.cache {
+            let cache_key = format!("trending:posts:{}:{}", limit, offset);
+
+            if let Ok(Some(cached_items)) = cache.get::<Vec<CachedFeedItem>>(&cache_key) {
+                return self.hydrate_cached_feed(cached_items).await;
+            }
+        }
+
+        // Get public posts with high engagement
+        let mut posts = self.post_repository.find_public(limit * 3, 0).await?;
+
+        // Filter for high engagement (at least 5 total interactions)
+        posts.retain(|post| {
+            let total_engagement = post.like_count + post.comment_count + post.reshare_count;
+            total_engagement >= 5
+        });
+
+        // Sort by engagement score
+        posts.sort_by(|a, b| {
+            let score_a = calculate_engagement_score(a);
+            let score_b = calculate_engagement_score(b);
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        // Apply pagination
+        let start = offset as usize;
+        let end = (start + limit as usize).min(posts.len());
+
+        let result = if start >= posts.len() {
+            vec![]
+        } else {
+            posts[start..end].to_vec()
+        };
+
+        // Cache trending posts for 10 minutes
+        if let Some(ref cache) = self.cache {
+            let cache_key = format!("trending:posts:{}:{}", limit, offset);
+            let cached_items: Vec<CachedFeedItem> =
+                result.iter().map(CachedFeedItem::from).collect();
+
+            if let Err(e) = cache.set(&cache_key, &cached_items, 10 * 60) {
+                tracing::warn!("Failed to cache trending posts: {}", e);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Invalidate feed cache for a user
+    pub async fn invalidate_user_feed_cache(&self, user_id: Uuid) -> Result<()> {
+        if let Some(ref cache) = self.cache {
+            // Invalidate common feed cache keys for this user
+            let strategies = ["chrono", "algo"];
+            let limits = [20, 50, 100];
+            let offsets = [0, 20, 40, 60, 80];
+
+            for strategy in &strategies {
+                for limit in &limits {
+                    for offset in &offsets {
+                        let key = format!(
+                            "feed:{}:{}:limit:{}:offset:{}",
+                            user_id, strategy, limit, offset
+                        );
+                        let _ = cache.delete(&key); // Ignore errors for cache invalidation
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Invalidate trending posts cache
+    pub async fn invalidate_trending_cache(&self) -> Result<()> {
+        if let Some(ref cache) = self.cache {
+            // Invalidate common trending cache keys
+            let limits = [20, 50, 100];
+            let offsets = [0, 20, 40, 60, 80];
+
+            for limit in &limits {
+                for offset in &offsets {
+                    let key = format!("trending:posts:{}:{}", limit, offset);
+                    let _ = cache.delete(&key); // Ignore errors for cache invalidation
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Get feed statistics for analytics
+    pub async fn get_feed_stats(&self, user_id: Uuid) -> Result<FeedStats> {
+        // Get user's following count
+        let user = self
+            .user_repository
+            .find_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        // Get sample of recent posts from feed
+        let recent_posts = self.post_repository.find_feed(user_id, 50, 0).await?;
+
+        let total_posts = recent_posts.len() as i32;
+        let reel_count = recent_posts.iter().filter(|p| p.is_reel).count() as i32;
+        let avg_engagement = if total_posts > 0 {
+            recent_posts
+                .iter()
+                .map(|p| p.like_count + p.comment_count + p.reshare_count)
+                .sum::<i32>() as f64
+                / total_posts as f64
+        } else {
+            0.0
+        };
+
+        Ok(FeedStats {
+            following_count: user.following_count,
+            recent_posts_count: total_posts,
+            reel_percentage: if total_posts > 0 {
+                (reel_count as f64 / total_posts as f64) * 100.0
+            } else {
+                0.0
+            },
+            avg_engagement,
+        })
+    }
+}
+
+/// Feed statistics for analytics
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FeedStats {
+    pub following_count: i32,
+    pub recent_posts_count: i32,
+    pub reel_percentage: f64,
+    pub avg_engagement: f64,
 }
 
 impl UserManagementService {
@@ -717,5 +1192,381 @@ mod tests {
         let result = service.get_user_profile(Uuid::new_v4()).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::NotFound(_)));
+    }
+}
+#[cfg(test)]
+mod feed_generation_tests {
+    use super::*;
+    use crate::domain::entities::{CreatePostRequest, PostContentType, PostVisibility};
+    use crate::domain::repositories::{MockUserRepository, PostRepository};
+    use async_trait::async_trait;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    // Mock PostRepository for testing
+    struct MockPostRepository {
+        posts: Mutex<HashMap<Uuid, Post>>,
+        user_feeds: Mutex<HashMap<Uuid, Vec<Uuid>>>, // user_id -> post_ids
+    }
+
+    impl MockPostRepository {
+        fn new() -> Self {
+            Self {
+                posts: Mutex::new(HashMap::new()),
+                user_feeds: Mutex::new(HashMap::new()),
+            }
+        }
+
+        fn add_post(&self, post: Post) {
+            self.posts.lock().unwrap().insert(post.id, post);
+        }
+
+        fn set_user_feed(&self, user_id: Uuid, post_ids: Vec<Uuid>) {
+            self.user_feeds.lock().unwrap().insert(user_id, post_ids);
+        }
+    }
+
+    #[async_trait]
+    impl PostRepository for MockPostRepository {
+        async fn create(&self, post: &Post) -> Result<Post> {
+            self.posts.lock().unwrap().insert(post.id, post.clone());
+            Ok(post.clone())
+        }
+
+        async fn find_by_id(&self, id: Uuid) -> Result<Option<Post>> {
+            Ok(self.posts.lock().unwrap().get(&id).cloned())
+        }
+
+        async fn update(&self, post: &Post) -> Result<Post> {
+            self.posts.lock().unwrap().insert(post.id, post.clone());
+            Ok(post.clone())
+        }
+
+        async fn delete(&self, id: Uuid) -> Result<()> {
+            self.posts.lock().unwrap().remove(&id);
+            Ok(())
+        }
+
+        async fn find_feed(&self, user_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Post>> {
+            let feeds = self.user_feeds.lock().unwrap();
+            let posts = self.posts.lock().unwrap();
+
+            if let Some(post_ids) = feeds.get(&user_id) {
+                let mut user_posts: Vec<Post> = post_ids
+                    .iter()
+                    .filter_map(|id| posts.get(id).cloned())
+                    .collect();
+
+                // Sort by created_at descending (newest first)
+                user_posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+                let start = offset as usize;
+                let end = (start + limit as usize).min(user_posts.len());
+
+                if start >= user_posts.len() {
+                    Ok(vec![])
+                } else {
+                    Ok(user_posts[start..end].to_vec())
+                }
+            } else {
+                Ok(vec![])
+            }
+        }
+
+        async fn find_by_user_id(
+            &self,
+            user_id: Uuid,
+            limit: i64,
+            offset: i64,
+        ) -> Result<Vec<Post>> {
+            let posts = self.posts.lock().unwrap();
+            let mut user_posts: Vec<Post> = posts
+                .values()
+                .filter(|p| p.user_id == user_id)
+                .cloned()
+                .collect();
+
+            user_posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+            let start = offset as usize;
+            let end = (start + limit as usize).min(user_posts.len());
+
+            if start >= user_posts.len() {
+                Ok(vec![])
+            } else {
+                Ok(user_posts[start..end].to_vec())
+            }
+        }
+
+        async fn find_public(&self, limit: i64, offset: i64) -> Result<Vec<Post>> {
+            let posts = self.posts.lock().unwrap();
+            let mut public_posts: Vec<Post> = posts
+                .values()
+                .filter(|p| p.visibility == PostVisibility::Public)
+                .cloned()
+                .collect();
+
+            public_posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+            let start = offset as usize;
+            let end = (start + limit as usize).min(public_posts.len());
+
+            if start >= public_posts.len() {
+                Ok(vec![])
+            } else {
+                Ok(public_posts[start..end].to_vec())
+            }
+        }
+
+        async fn find_reels(
+            &self,
+            user_id: Option<Uuid>,
+            limit: i64,
+            offset: i64,
+        ) -> Result<Vec<Post>> {
+            let posts = self.posts.lock().unwrap();
+            let feeds = self.user_feeds.lock().unwrap();
+
+            let mut reels = if let Some(uid) = user_id {
+                // Get reels from user's feed
+                if let Some(post_ids) = feeds.get(&uid) {
+                    post_ids
+                        .iter()
+                        .filter_map(|id| posts.get(id))
+                        .filter(|p| p.is_reel)
+                        .cloned()
+                        .collect()
+                } else {
+                    vec![]
+                }
+            } else {
+                // Get all public reels
+                posts
+                    .values()
+                    .filter(|p| p.is_reel && p.visibility == PostVisibility::Public)
+                    .cloned()
+                    .collect()
+            };
+
+            reels.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+            let start = offset as usize;
+            let end = (start + limit as usize).min(reels.len());
+
+            if start >= reels.len() {
+                Ok(vec![])
+            } else {
+                Ok(reels[start..end].to_vec())
+            }
+        }
+
+        async fn search(&self, _query: &str, _limit: i64, _offset: i64) -> Result<Vec<Post>> {
+            Ok(vec![])
+        }
+
+        async fn increment_like_count(&self, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn decrement_like_count(&self, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn increment_comment_count(&self, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn decrement_comment_count(&self, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn increment_reshare_count(&self, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn decrement_reshare_count(&self, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn has_user_liked(&self, _user_id: Uuid, _post_id: Uuid) -> Result<bool> {
+            Ok(false)
+        }
+
+        async fn like_post(&self, _user_id: Uuid, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn unlike_post(&self, _user_id: Uuid, _post_id: Uuid) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get_post_likes(
+            &self,
+            _post_id: Uuid,
+            _limit: i64,
+            _offset: i64,
+        ) -> Result<Vec<User>> {
+            Ok(vec![])
+        }
+    }
+
+    fn create_test_post(user_id: Uuid, content: &str, is_reel: bool) -> Post {
+        use crate::domain::entities::MediaAttachment;
+
+        let media_attachments = if is_reel {
+            // Reels need video content
+            vec![MediaAttachment::new(
+                "https://example.com/video.mp4".to_string(),
+                "video/mp4".to_string(),
+                1024 * 1024, // 1MB
+                Some(1920),
+                Some(1080),
+                Some(30), // 30 seconds
+            )
+            .unwrap()]
+        } else {
+            vec![]
+        };
+
+        let request = CreatePostRequest {
+            user_id,
+            text_content: Some(content.to_string()),
+            media_attachments,
+            is_reel,
+            visibility: PostVisibility::Public,
+        };
+        Post::new(request).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_chronological_feed_generation() {
+        let post_repo = Arc::new(MockPostRepository::new());
+        let user_repo = Arc::new(MockUserRepository::new());
+        let service = FeedGenerationService::new(post_repo.clone(), user_repo, None);
+
+        let user_id = Uuid::new_v4();
+        let post1 = create_test_post(user_id, "First post", false);
+        let post2 = create_test_post(user_id, "Second post", false);
+
+        post_repo.add_post(post1.clone());
+        post_repo.add_post(post2.clone());
+        post_repo.set_user_feed(user_id, vec![post1.id, post2.id]);
+
+        let filters = FeedFilters::default();
+        let result = service
+            .generate_feed(user_id, FeedSortStrategy::Chronological, filters, 10, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        // Should be sorted by created_at descending (newest first)
+        assert!(result[0].created_at >= result[1].created_at);
+    }
+
+    #[tokio::test]
+    async fn test_reels_only_filter() {
+        let post_repo = Arc::new(MockPostRepository::new());
+        let user_repo = Arc::new(MockUserRepository::new());
+        let service = FeedGenerationService::new(post_repo.clone(), user_repo, None);
+
+        let user_id = Uuid::new_v4();
+        let regular_post = create_test_post(user_id, "Regular post", false);
+        let reel_post = create_test_post(user_id, "Reel post", true);
+
+        post_repo.add_post(regular_post.clone());
+        post_repo.add_post(reel_post.clone());
+        post_repo.set_user_feed(user_id, vec![regular_post.id, reel_post.id]);
+
+        let filters = FeedFilters {
+            reels_only: true,
+            ..Default::default()
+        };
+
+        let result = service
+            .generate_feed(user_id, FeedSortStrategy::Chronological, filters, 10, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].is_reel);
+    }
+
+    #[tokio::test]
+    async fn test_algorithmic_feed_sorting() {
+        let post_repo = Arc::new(MockPostRepository::new());
+        let user_repo = Arc::new(MockUserRepository::new());
+        let service = FeedGenerationService::new(post_repo.clone(), user_repo, None);
+
+        let user_id = Uuid::new_v4();
+
+        // Create posts with different engagement levels
+        let mut low_engagement_post = create_test_post(user_id, "Low engagement", false);
+        low_engagement_post.like_count = 1;
+
+        let mut high_engagement_post = create_test_post(user_id, "High engagement", false);
+        high_engagement_post.like_count = 50;
+        high_engagement_post.comment_count = 10;
+
+        post_repo.add_post(low_engagement_post.clone());
+        post_repo.add_post(high_engagement_post.clone());
+        post_repo.set_user_feed(
+            user_id,
+            vec![low_engagement_post.id, high_engagement_post.id],
+        );
+
+        let filters = FeedFilters::default();
+        let result = service
+            .generate_feed(user_id, FeedSortStrategy::Algorithmic, filters, 10, 0)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        // High engagement post should come first in algorithmic feed
+        assert_eq!(result[0].id, high_engagement_post.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_reels_feed() {
+        let post_repo = Arc::new(MockPostRepository::new());
+        let user_repo = Arc::new(MockUserRepository::new());
+        let service = FeedGenerationService::new(post_repo.clone(), user_repo, None);
+
+        let user_id = Uuid::new_v4();
+        let regular_post = create_test_post(user_id, "Regular post", false);
+        let reel_post = create_test_post(user_id, "Reel post", true);
+
+        post_repo.add_post(regular_post.clone());
+        post_repo.add_post(reel_post.clone());
+        post_repo.set_user_feed(user_id, vec![regular_post.id, reel_post.id]);
+
+        let result = service.get_reels_feed(user_id, 10, 0).await.unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].is_reel);
+        assert_eq!(result[0].id, reel_post.id);
+    }
+
+    #[tokio::test]
+    async fn test_get_trending_posts() {
+        let post_repo = Arc::new(MockPostRepository::new());
+        let user_repo = Arc::new(MockUserRepository::new());
+        let service = FeedGenerationService::new(post_repo.clone(), user_repo, None);
+
+        // Create posts with different engagement levels
+        let mut low_engagement_post = create_test_post(Uuid::new_v4(), "Low engagement", false);
+        low_engagement_post.like_count = 2;
+
+        let mut high_engagement_post = create_test_post(Uuid::new_v4(), "High engagement", false);
+        high_engagement_post.like_count = 20;
+        high_engagement_post.comment_count = 5;
+
+        post_repo.add_post(low_engagement_post.clone());
+        post_repo.add_post(high_engagement_post.clone());
+
+        let result = service.get_trending_posts(10, 0).await.unwrap();
+
+        // Only high engagement post should be in trending (>= 5 total engagement)
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, high_engagement_post.id);
     }
 }
