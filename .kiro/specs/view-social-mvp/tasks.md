@@ -228,7 +228,7 @@
   - **Property 16: Insufficient funds validation**
   - **Validates: Requirements 6.4**
 
-- [ ] 9.4 Create notification service
+- [x] 9.4 Create notification service
   - Implement push notification sending
   - Add in-app notification management
   - Create notification preference handling

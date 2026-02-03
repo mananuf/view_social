@@ -1,14 +1,17 @@
 use crate::api::handlers::auth_handlers::AuthState;
 use crate::api::handlers::message_handlers::MessageState;
+use crate::api::handlers::notification_handlers::NotificationState;
 use crate::api::handlers::payment_handlers::PaymentState;
 use crate::api::handlers::post_handlers::PostState;
 use crate::api::websocket::WebSocketState;
+use crate::application::services::NotificationService;
 use crate::application::verification::VerificationService;
 use crate::config::Config;
 use crate::domain::auth::JwtService;
-use crate::infrastructure::database::{
-    PostgresConversationRepository, PostgresMessageRepository, PostgresPostRepository,
-    PostgresUserRepository, PostgresWalletRepository,
+use crate::infrastructure::database::repositories::{
+    InMemoryNotificationPreferencesRepository, PostgresConversationRepository,
+    PostgresDeviceTokenRepository, PostgresMessageRepository, PostgresNotificationRepository,
+    PostgresPostRepository, PostgresUserRepository, PostgresWalletRepository,
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -20,6 +23,7 @@ pub struct AppState {
     pub post_state: PostState,
     pub message_state: MessageState,
     pub payment_state: PaymentState,
+    pub notification_state: NotificationState,
     pub ws_state: WebSocketState,
 }
 
@@ -45,6 +49,14 @@ impl AppState {
             as Arc<dyn crate::domain::repositories::MessageRepository>;
         let wallet_repo = Arc::new(PostgresWalletRepository::new(pool.clone()))
             as Arc<dyn crate::domain::repositories::WalletRepository>;
+
+        // Initialize notification repositories
+        let notification_repo = Arc::new(PostgresNotificationRepository::new(pool.clone()))
+            as Arc<dyn crate::domain::repositories::NotificationRepository>;
+        let device_token_repo = Arc::new(PostgresDeviceTokenRepository::new(pool.clone()))
+            as Arc<dyn crate::domain::repositories::DeviceTokenRepository>;
+        let preferences_repo = Arc::new(InMemoryNotificationPreferencesRepository::new())
+            as Arc<dyn crate::domain::repositories::NotificationPreferencesRepository>;
 
         tracing::info!("✅ Repository layer initialized");
 
@@ -88,11 +100,22 @@ impl AppState {
             connection_manager: ws_state.connection_manager.clone(),
         };
 
+        // Initialize notification service
+        let notification_service = Arc::new(NotificationService::new(
+            notification_repo,
+            device_token_repo,
+            preferences_repo,
+            user_repo.clone(),
+        ));
+
+        tracing::info!("✅ Notification service initialized");
+
         Ok(Self {
             auth_state,
             post_state,
             message_state,
             payment_state,
+            notification_state: notification_service,
             ws_state,
         })
     }

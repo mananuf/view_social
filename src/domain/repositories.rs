@@ -1,4 +1,7 @@
-use crate::domain::entities::{Message, MessageRead, Post, Transaction, User, Wallet};
+use crate::domain::entities::{
+    DeviceToken, Message, MessageRead, Notification, NotificationPreferences, Post, Transaction,
+    User, Wallet,
+};
 use crate::domain::errors::Result;
 use async_trait::async_trait;
 use chrono::DateTime;
@@ -280,6 +283,99 @@ pub trait WalletRepository: Send + Sync {
         amount: Decimal,
         transaction: &Transaction,
     ) -> Result<Transaction>;
+}
+
+/// Repository trait for Notification entity operations
+#[async_trait]
+pub trait NotificationRepository: Send + Sync {
+    /// Create a new notification
+    async fn create(&self, notification: &Notification) -> Result<Notification>;
+
+    /// Find notification by ID
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Notification>>;
+
+    /// Update notification
+    async fn update(&self, notification: &Notification) -> Result<Notification>;
+
+    /// Delete notification by ID
+    async fn delete(&self, id: Uuid) -> Result<()>;
+
+    /// Get notifications for a user with pagination
+    async fn find_by_user_id(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Notification>>;
+
+    /// Get unread notifications for a user
+    async fn find_unread_by_user_id(&self, user_id: Uuid) -> Result<Vec<Notification>>;
+
+    /// Get unread notification count for a user
+    async fn get_unread_count(&self, user_id: Uuid) -> Result<i64>;
+
+    /// Mark notification as read
+    async fn mark_as_read(&self, notification_id: Uuid) -> Result<()>;
+
+    /// Mark all notifications as read for a user
+    async fn mark_all_as_read(&self, user_id: Uuid) -> Result<()>;
+
+    /// Delete old notifications (cleanup)
+    async fn delete_old_notifications(&self, days: i32) -> Result<i64>;
+
+    /// Find notifications by type for a user
+    async fn find_by_type(
+        &self,
+        user_id: Uuid,
+        notification_type: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Notification>>;
+}
+
+/// Repository trait for DeviceToken entity operations
+#[async_trait]
+pub trait DeviceTokenRepository: Send + Sync {
+    /// Create or update a device token
+    async fn upsert(&self, device_token: &DeviceToken) -> Result<DeviceToken>;
+
+    /// Find device token by ID
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<DeviceToken>>;
+
+    /// Find active device tokens for a user
+    async fn find_active_by_user_id(&self, user_id: Uuid) -> Result<Vec<DeviceToken>>;
+
+    /// Find device token by user and token
+    async fn find_by_user_and_token(
+        &self,
+        user_id: Uuid,
+        token: &str,
+    ) -> Result<Option<DeviceToken>>;
+
+    /// Deactivate device token
+    async fn deactivate(&self, token_id: Uuid) -> Result<()>;
+
+    /// Deactivate all tokens for a user
+    async fn deactivate_all_for_user(&self, user_id: Uuid) -> Result<()>;
+
+    /// Delete inactive tokens (cleanup)
+    async fn delete_inactive_tokens(&self, days: i32) -> Result<i64>;
+}
+
+/// Repository trait for NotificationPreferences operations
+#[async_trait]
+pub trait NotificationPreferencesRepository: Send + Sync {
+    /// Create or update notification preferences
+    async fn upsert(
+        &self,
+        preferences: &NotificationPreferences,
+    ) -> Result<NotificationPreferences>;
+
+    /// Find preferences by user ID
+    async fn find_by_user_id(&self, user_id: Uuid) -> Result<Option<NotificationPreferences>>;
+
+    /// Delete preferences for a user
+    async fn delete_by_user_id(&self, user_id: Uuid) -> Result<()>;
 }
 
 /// Mock implementation for testing

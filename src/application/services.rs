@@ -1,6 +1,12 @@
-use crate::domain::entities::{Post, UpdateUserRequest, User};
+use crate::domain::entities::{
+    CreateNotificationRequest, DeviceToken, Notification, NotificationPreferences,
+    NotificationType, Post, UpdateUserRequest, User,
+};
 use crate::domain::errors::{AppError, Result};
-use crate::domain::repositories::{PostRepository, UserRepository, WalletRepository};
+use crate::domain::repositories::{
+    DeviceTokenRepository, NotificationPreferencesRepository, NotificationRepository,
+    PostRepository, UserRepository, WalletRepository,
+};
 use crate::infrastructure::cache::{CacheConfig, RedisCache};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -483,6 +489,467 @@ pub struct FeedStats {
     pub recent_posts_count: i32,
     pub reel_percentage: f64,
     pub avg_engagement: f64,
+}
+
+/// Notification service for managing notifications and push notifications
+pub struct NotificationService {
+    notification_repository: Arc<dyn NotificationRepository>,
+    device_token_repository: Arc<dyn DeviceTokenRepository>,
+    preferences_repository: Arc<dyn NotificationPreferencesRepository>,
+    user_repository: Arc<dyn UserRepository>,
+}
+
+/// Push notification payload
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushNotificationPayload {
+    pub title: String,
+    pub body: String,
+    pub data: serde_json::Value,
+    pub badge_count: Option<i32>,
+}
+
+/// Notification statistics
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NotificationStats {
+    pub total_notifications: i64,
+    pub unread_count: i64,
+    pub recent_count: i64, // Last 24 hours
+    pub by_type: std::collections::HashMap<String, i64>,
+}
+
+impl NotificationService {
+    pub fn new(
+        notification_repository: Arc<dyn NotificationRepository>,
+        device_token_repository: Arc<dyn DeviceTokenRepository>,
+        preferences_repository: Arc<dyn NotificationPreferencesRepository>,
+        user_repository: Arc<dyn UserRepository>,
+    ) -> Self {
+        Self {
+            notification_repository,
+            device_token_repository,
+            preferences_repository,
+            user_repository,
+        }
+    }
+
+    /// Create and send a notification
+    pub async fn create_notification(
+        &self,
+        request: CreateNotificationRequest,
+    ) -> Result<Notification> {
+        // Check if user exists
+        let _user = self
+            .user_repository
+            .find_by_id(request.user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        // Check user preferences
+        let preferences = self
+            .get_user_preferences(request.user_id)
+            .await?
+            .unwrap_or_else(|| NotificationPreferences::new(request.user_id));
+
+        // Check if this type of notification is enabled
+        if !preferences.is_notification_enabled(&request.notification_type) {
+            return Err(AppError::ValidationError(
+                "Notification type is disabled for this user".to_string(),
+            ));
+        }
+
+        // Create the notification
+        let notification = Notification::new(request)?;
+        let created_notification = self.notification_repository.create(&notification).await?;
+
+        // Send push notification if enabled
+        if preferences.push_notifications_enabled {
+            if let Err(e) = self.send_push_notification(&created_notification).await {
+                tracing::warn!(
+                    "Failed to send push notification for notification {}: {}",
+                    created_notification.id,
+                    e
+                );
+                // Don't fail the entire operation if push notification fails
+            }
+        }
+
+        Ok(created_notification)
+    }
+
+    /// Send push notification to user's devices
+    async fn send_push_notification(&self, notification: &Notification) -> Result<()> {
+        let device_tokens = self
+            .device_token_repository
+            .find_active_by_user_id(notification.user_id)
+            .await?;
+
+        if device_tokens.is_empty() {
+            tracing::debug!(
+                "No active device tokens found for user {}",
+                notification.user_id
+            );
+            return Ok(());
+        }
+
+        let unread_count = self
+            .notification_repository
+            .get_unread_count(notification.user_id)
+            .await?;
+
+        let payload = PushNotificationPayload {
+            title: notification.title.clone(),
+            body: notification.body.clone(),
+            data: notification.data.clone(),
+            badge_count: Some(unread_count as i32),
+        };
+
+        // Send to each device
+        for device_token in device_tokens {
+            if let Err(e) = self.send_to_device(&device_token, &payload).await {
+                tracing::warn!(
+                    "Failed to send push notification to device {}: {}",
+                    device_token.id,
+                    e
+                );
+                // Consider deactivating invalid tokens
+                if e.to_string().contains("invalid token") {
+                    let _ = self
+                        .device_token_repository
+                        .deactivate(device_token.id)
+                        .await;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Send push notification to a specific device
+    async fn send_to_device(
+        &self,
+        device_token: &DeviceToken,
+        payload: &PushNotificationPayload,
+    ) -> Result<()> {
+        // This is a placeholder for actual push notification implementation
+        // In a real implementation, you would integrate with:
+        // - Firebase Cloud Messaging (FCM) for Android
+        // - Apple Push Notification Service (APNs) for iOS
+        // - Web Push for web browsers
+
+        tracing::info!(
+            "Sending push notification to {} device {}: {}",
+            device_token.platform,
+            device_token.id,
+            payload.title
+        );
+
+        // Simulate push notification sending
+        // In production, replace this with actual push service calls
+        match device_token.platform {
+            crate::domain::entities::DevicePlatform::Android => {
+                // Send via FCM
+                self.send_fcm_notification(device_token, payload).await
+            }
+            crate::domain::entities::DevicePlatform::Ios => {
+                // Send via APNs
+                self.send_apns_notification(device_token, payload).await
+            }
+            crate::domain::entities::DevicePlatform::Web => {
+                // Send via Web Push
+                self.send_web_push_notification(device_token, payload).await
+            }
+        }
+    }
+
+    /// Send FCM notification (Android)
+    async fn send_fcm_notification(
+        &self,
+        device_token: &DeviceToken,
+        payload: &PushNotificationPayload,
+    ) -> Result<()> {
+        // Placeholder for FCM implementation
+        tracing::debug!(
+            "FCM notification sent to token {}: {}",
+            device_token.token,
+            payload.title
+        );
+        Ok(())
+    }
+
+    /// Send APNs notification (iOS)
+    async fn send_apns_notification(
+        &self,
+        device_token: &DeviceToken,
+        payload: &PushNotificationPayload,
+    ) -> Result<()> {
+        // Placeholder for APNs implementation
+        tracing::debug!(
+            "APNs notification sent to token {}: {}",
+            device_token.token,
+            payload.title
+        );
+        Ok(())
+    }
+
+    /// Send Web Push notification
+    async fn send_web_push_notification(
+        &self,
+        device_token: &DeviceToken,
+        payload: &PushNotificationPayload,
+    ) -> Result<()> {
+        // Placeholder for Web Push implementation
+        tracing::debug!(
+            "Web Push notification sent to token {}: {}",
+            device_token.token,
+            payload.title
+        );
+        Ok(())
+    }
+
+    /// Get notifications for a user
+    pub async fn get_user_notifications(
+        &self,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Notification>> {
+        // Validate that user exists
+        let _user = self
+            .user_repository
+            .find_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        self.notification_repository
+            .find_by_user_id(user_id, limit, offset)
+            .await
+    }
+
+    /// Get unread notifications for a user
+    pub async fn get_unread_notifications(&self, user_id: Uuid) -> Result<Vec<Notification>> {
+        // Validate that user exists
+        let _user = self
+            .user_repository
+            .find_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        self.notification_repository
+            .find_unread_by_user_id(user_id)
+            .await
+    }
+
+    /// Mark notification as read
+    pub async fn mark_notification_as_read(&self, notification_id: Uuid) -> Result<()> {
+        // Check if notification exists
+        let _notification = self
+            .notification_repository
+            .find_by_id(notification_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Notification not found".to_string()))?;
+
+        self.notification_repository
+            .mark_as_read(notification_id)
+            .await
+    }
+
+    /// Mark all notifications as read for a user
+    pub async fn mark_all_notifications_as_read(&self, user_id: Uuid) -> Result<()> {
+        // Validate that user exists
+        let _user = self
+            .user_repository
+            .find_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        self.notification_repository.mark_all_as_read(user_id).await
+    }
+
+    /// Get notification statistics for a user
+    pub async fn get_notification_stats(&self, user_id: Uuid) -> Result<NotificationStats> {
+        // Validate that user exists
+        let _user = self
+            .user_repository
+            .find_by_id(user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        let unread_count = self
+            .notification_repository
+            .get_unread_count(user_id)
+            .await?;
+
+        // Get recent notifications (last 100) to calculate stats
+        let recent_notifications = self
+            .notification_repository
+            .find_by_user_id(user_id, 100, 0)
+            .await?;
+
+        let total_notifications = recent_notifications.len() as i64;
+        let recent_count = recent_notifications
+            .iter()
+            .filter(|n| n.is_recent())
+            .count() as i64;
+
+        // Count by type
+        let mut by_type = std::collections::HashMap::new();
+        for notification in &recent_notifications {
+            let type_str = notification.notification_type.to_string();
+            *by_type.entry(type_str).or_insert(0) += 1;
+        }
+
+        Ok(NotificationStats {
+            total_notifications,
+            unread_count,
+            recent_count,
+            by_type,
+        })
+    }
+
+    /// Register device token for push notifications
+    pub async fn register_device_token(&self, device_token: &DeviceToken) -> Result<DeviceToken> {
+        // Validate that user exists
+        let _user = self
+            .user_repository
+            .find_by_id(device_token.user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        self.device_token_repository.upsert(device_token).await
+    }
+
+    /// Unregister device token
+    pub async fn unregister_device_token(&self, token_id: Uuid) -> Result<()> {
+        self.device_token_repository.deactivate(token_id).await
+    }
+
+    /// Get user notification preferences
+    pub async fn get_user_preferences(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<NotificationPreferences>> {
+        self.preferences_repository.find_by_user_id(user_id).await
+    }
+
+    /// Update user notification preferences
+    pub async fn update_user_preferences(
+        &self,
+        preferences: &NotificationPreferences,
+    ) -> Result<NotificationPreferences> {
+        // Validate that user exists
+        let _user = self
+            .user_repository
+            .find_by_id(preferences.user_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        self.preferences_repository.upsert(preferences).await
+    }
+
+    /// Create notification for message received
+    pub async fn notify_message_received(
+        &self,
+        recipient_id: Uuid,
+        sender_name: &str,
+        message_preview: &str,
+        conversation_id: Uuid,
+    ) -> Result<()> {
+        let request = CreateNotificationRequest {
+            user_id: recipient_id,
+            notification_type: NotificationType::Message,
+            title: format!("New message from {}", sender_name),
+            body: message_preview.to_string(),
+            data: Some(serde_json::json!({
+                "conversation_id": conversation_id,
+                "sender_name": sender_name
+            })),
+        };
+
+        self.create_notification(request).await?;
+        Ok(())
+    }
+
+    /// Create notification for post liked
+    pub async fn notify_post_liked(
+        &self,
+        post_author_id: Uuid,
+        liker_name: &str,
+        post_id: Uuid,
+    ) -> Result<()> {
+        let request = CreateNotificationRequest {
+            user_id: post_author_id,
+            notification_type: NotificationType::Like,
+            title: format!("{} liked your post", liker_name),
+            body: "Your post received a new like".to_string(),
+            data: Some(serde_json::json!({
+                "post_id": post_id,
+                "liker_name": liker_name
+            })),
+        };
+
+        self.create_notification(request).await?;
+        Ok(())
+    }
+
+    /// Create notification for new follower
+    pub async fn notify_new_follower(
+        &self,
+        followed_user_id: Uuid,
+        follower_name: &str,
+        follower_id: Uuid,
+    ) -> Result<()> {
+        let request = CreateNotificationRequest {
+            user_id: followed_user_id,
+            notification_type: NotificationType::Follow,
+            title: format!("{} started following you", follower_name),
+            body: "You have a new follower".to_string(),
+            data: Some(serde_json::json!({
+                "follower_id": follower_id,
+                "follower_name": follower_name
+            })),
+        };
+
+        self.create_notification(request).await?;
+        Ok(())
+    }
+
+    /// Create notification for payment received
+    pub async fn notify_payment_received(
+        &self,
+        recipient_id: Uuid,
+        sender_name: &str,
+        amount: &str,
+        transaction_id: Uuid,
+    ) -> Result<()> {
+        let request = CreateNotificationRequest {
+            user_id: recipient_id,
+            notification_type: NotificationType::PaymentReceived,
+            title: format!("Payment received from {}", sender_name),
+            body: format!("You received {} from {}", amount, sender_name),
+            data: Some(serde_json::json!({
+                "transaction_id": transaction_id,
+                "sender_name": sender_name,
+                "amount": amount
+            })),
+        };
+
+        self.create_notification(request).await?;
+        Ok(())
+    }
+
+    /// Clean up old notifications
+    pub async fn cleanup_old_notifications(&self, days: i32) -> Result<i64> {
+        self.notification_repository
+            .delete_old_notifications(days)
+            .await
+    }
+
+    /// Clean up inactive device tokens
+    pub async fn cleanup_inactive_tokens(&self, days: i32) -> Result<i64> {
+        self.device_token_repository
+            .delete_inactive_tokens(days)
+            .await
+    }
 }
 
 impl UserManagementService {

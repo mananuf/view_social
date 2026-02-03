@@ -1075,6 +1075,316 @@ impl Transaction {
         self.sender_wallet_id == Some(wallet_id) || self.receiver_wallet_id == Some(wallet_id)
     }
 }
+
+// Notification entities
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NotificationType {
+    Message,
+    Like,
+    Comment,
+    Follow,
+    PaymentReceived,
+    PaymentSent,
+    Mention,
+    System,
+}
+
+impl std::fmt::Display for NotificationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NotificationType::Message => write!(f, "message"),
+            NotificationType::Like => write!(f, "like"),
+            NotificationType::Comment => write!(f, "comment"),
+            NotificationType::Follow => write!(f, "follow"),
+            NotificationType::PaymentReceived => write!(f, "payment_received"),
+            NotificationType::PaymentSent => write!(f, "payment_sent"),
+            NotificationType::Mention => write!(f, "mention"),
+            NotificationType::System => write!(f, "system"),
+        }
+    }
+}
+
+impl std::str::FromStr for NotificationType {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "message" => Ok(NotificationType::Message),
+            "like" => Ok(NotificationType::Like),
+            "comment" => Ok(NotificationType::Comment),
+            "follow" => Ok(NotificationType::Follow),
+            "payment_received" => Ok(NotificationType::PaymentReceived),
+            "payment_sent" => Ok(NotificationType::PaymentSent),
+            "mention" => Ok(NotificationType::Mention),
+            "system" => Ok(NotificationType::System),
+            _ => Err(AppError::ValidationError(format!(
+                "Invalid notification type: {}",
+                s
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Notification {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub notification_type: NotificationType,
+    pub title: String,
+    pub body: String,
+    pub data: serde_json::Value,
+    pub is_read: bool,
+    pub created_at: DateTime<Utc>,
+    pub read_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateNotificationRequest {
+    pub user_id: Uuid,
+    pub notification_type: NotificationType,
+    pub title: String,
+    pub body: String,
+    pub data: Option<serde_json::Value>,
+}
+
+impl Notification {
+    pub fn new(request: CreateNotificationRequest) -> Result<Self> {
+        // Validate title
+        if request.title.trim().is_empty() {
+            return Err(AppError::ValidationError(
+                "Notification title cannot be empty".to_string(),
+            ));
+        }
+
+        if request.title.len() > 255 {
+            return Err(AppError::ValidationError(
+                "Notification title cannot exceed 255 characters".to_string(),
+            ));
+        }
+
+        // Validate body
+        if request.body.trim().is_empty() {
+            return Err(AppError::ValidationError(
+                "Notification body cannot be empty".to_string(),
+            ));
+        }
+
+        if request.body.len() > 1000 {
+            return Err(AppError::ValidationError(
+                "Notification body cannot exceed 1000 characters".to_string(),
+            ));
+        }
+
+        let data = request.data.unwrap_or_else(|| serde_json::json!({}));
+
+        Ok(Notification {
+            id: Uuid::new_v4(),
+            user_id: request.user_id,
+            notification_type: request.notification_type,
+            title: request.title,
+            body: request.body,
+            data,
+            is_read: false,
+            created_at: Utc::now(),
+            read_at: None,
+        })
+    }
+
+    pub fn mark_as_read(&mut self) {
+        if !self.is_read {
+            self.is_read = true;
+            self.read_at = Some(Utc::now());
+        }
+    }
+
+    pub fn mark_as_unread(&mut self) {
+        self.is_read = false;
+        self.read_at = None;
+    }
+
+    pub fn is_recent(&self) -> bool {
+        let now = Utc::now();
+        let duration = now - self.created_at;
+        duration.num_hours() < 24
+    }
+
+    pub fn get_data_field<T>(&self, key: &str) -> Option<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        self.data
+            .get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DevicePlatform {
+    Ios,
+    Android,
+    Web,
+}
+
+impl std::fmt::Display for DevicePlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DevicePlatform::Ios => write!(f, "ios"),
+            DevicePlatform::Android => write!(f, "android"),
+            DevicePlatform::Web => write!(f, "web"),
+        }
+    }
+}
+
+impl std::str::FromStr for DevicePlatform {
+    type Err = AppError;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "ios" => Ok(DevicePlatform::Ios),
+            "android" => Ok(DevicePlatform::Android),
+            "web" => Ok(DevicePlatform::Web),
+            _ => Err(AppError::ValidationError(format!(
+                "Invalid device platform: {}",
+                s
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceToken {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub token: String,
+    pub platform: DevicePlatform,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateDeviceTokenRequest {
+    pub user_id: Uuid,
+    pub token: String,
+    pub platform: DevicePlatform,
+}
+
+impl DeviceToken {
+    pub fn new(request: CreateDeviceTokenRequest) -> Result<Self> {
+        // Validate token
+        if request.token.trim().is_empty() {
+            return Err(AppError::ValidationError(
+                "Device token cannot be empty".to_string(),
+            ));
+        }
+
+        if request.token.len() > 500 {
+            return Err(AppError::ValidationError(
+                "Device token cannot exceed 500 characters".to_string(),
+            ));
+        }
+
+        let now = Utc::now();
+
+        Ok(DeviceToken {
+            id: Uuid::new_v4(),
+            user_id: request.user_id,
+            token: request.token,
+            platform: request.platform,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    pub fn deactivate(&mut self) {
+        self.is_active = false;
+        self.updated_at = Utc::now();
+    }
+
+    pub fn activate(&mut self) {
+        self.is_active = true;
+        self.updated_at = Utc::now();
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationPreferences {
+    pub user_id: Uuid,
+    pub push_notifications_enabled: bool,
+    pub email_notifications_enabled: bool,
+    pub message_notifications: bool,
+    pub like_notifications: bool,
+    pub comment_notifications: bool,
+    pub follow_notifications: bool,
+    pub payment_notifications: bool,
+    pub mention_notifications: bool,
+    pub system_notifications: bool,
+}
+
+impl Default for NotificationPreferences {
+    fn default() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            push_notifications_enabled: true,
+            email_notifications_enabled: true,
+            message_notifications: true,
+            like_notifications: true,
+            comment_notifications: true,
+            follow_notifications: true,
+            payment_notifications: true,
+            mention_notifications: true,
+            system_notifications: true,
+        }
+    }
+}
+
+impl NotificationPreferences {
+    pub fn new(user_id: Uuid) -> Self {
+        Self {
+            user_id,
+            ..Default::default()
+        }
+    }
+
+    pub fn is_notification_enabled(&self, notification_type: &NotificationType) -> bool {
+        match notification_type {
+            NotificationType::Message => self.message_notifications,
+            NotificationType::Like => self.like_notifications,
+            NotificationType::Comment => self.comment_notifications,
+            NotificationType::Follow => self.follow_notifications,
+            NotificationType::PaymentReceived | NotificationType::PaymentSent => {
+                self.payment_notifications
+            }
+            NotificationType::Mention => self.mention_notifications,
+            NotificationType::System => self.system_notifications,
+        }
+    }
+
+    pub fn disable_all(&mut self) {
+        self.push_notifications_enabled = false;
+        self.email_notifications_enabled = false;
+        self.message_notifications = false;
+        self.like_notifications = false;
+        self.comment_notifications = false;
+        self.follow_notifications = false;
+        self.payment_notifications = false;
+        self.mention_notifications = false;
+        self.system_notifications = false;
+    }
+
+    pub fn enable_all(&mut self) {
+        self.push_notifications_enabled = true;
+        self.email_notifications_enabled = true;
+        self.message_notifications = true;
+        self.like_notifications = true;
+        self.comment_notifications = true;
+        self.follow_notifications = true;
+        self.payment_notifications = true;
+        self.mention_notifications = true;
+        self.system_notifications = true;
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
