@@ -82,8 +82,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       ),
       child: SafeArea(
         child: Container(
-          height: 80,
-          padding: DesignTokens.paddingVerticalSm,
+          height: 70,
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
@@ -126,34 +126,34 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }) {
     final isActive = _currentIndex == index;
 
-    return GestureDetector(
-      onTap: () => _onTabTapped(index),
-      child: Container(
-        padding: DesignTokens.paddingVerticalXs,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: DesignTokens.animationFast,
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? AppTheme.primaryColor.withValues(alpha: 0.1)
-                    : Colors.transparent,
-                borderRadius: DesignTokens.borderRadiusLg,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onTabTapped(index),
+        child: Container(
+          padding: DesignTokens.paddingVerticalXs,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: DesignTokens.animationFast,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? AppTheme.primaryColor.withValues(alpha: 0.1)
+                      : Colors.transparent,
+                  borderRadius: DesignTokens.borderRadiusLg,
+                ),
+                child: Icon(
+                  isActive ? activeIcon : icon,
+                  color: isActive
+                      ? AppTheme.primaryColor
+                      : AppTheme.lightTextSecondary,
+                  size: 20,
+                ),
               ),
-              child: Icon(
-                isActive ? activeIcon : icon,
-                color: isActive
-                    ? AppTheme.primaryColor
-                    : AppTheme.lightTextSecondary,
-                size: 20,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Flexible(
-              child: Text(
+              const SizedBox(height: 2),
+              Text(
                 label,
                 style: DesignTokens.getCaptionStyle(
                   context,
@@ -166,8 +166,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

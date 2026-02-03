@@ -1,16 +1,17 @@
 import 'dart:io';
 
 class AppConstants {
-  // API Configuration - Dynamic based on platform
+  // API Configuration - Dynamic based on platform and Docker environment
   static String get baseUrl {
     if (Platform.isAndroid) {
       // Android emulator uses 10.0.2.2 to access host machine
+      // For Docker container, use the container's host IP
       return 'http://10.0.2.2:3000/api/v1';
     } else if (Platform.isIOS) {
-      // iOS simulator can use localhost
+      // iOS simulator can use localhost for Docker containers
       return 'http://localhost:3000/api/v1';
     } else {
-      // For web or other platforms
+      // For web or other platforms, use localhost for Docker
       return 'http://localhost:3000/api/v1';
     }
   }

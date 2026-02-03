@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/design_tokens.dart';
 import '../../../../core/theme/responsive.dart';
-import '../../../../shared/widgets/custom_button.dart';
+import '../../../../shared/widgets/abstract_background.dart';
 import 'login_page.dart';
 import 'register_page.dart';
 
@@ -13,7 +13,8 @@ class WelcomePage extends StatefulWidget {
   State<WelcomePage> createState() => _WelcomePageState();
 }
 
-class _WelcomePageState extends State<WelcomePage> with TickerProviderStateMixin {
+class _WelcomePageState extends State<WelcomePage>
+    with TickerProviderStateMixin {
   late AnimationController _slideController;
   late Animation<Offset> _slideAnimation;
 
@@ -29,13 +30,13 @@ class _WelcomePageState extends State<WelcomePage> with TickerProviderStateMixin
       vsync: this,
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: DesignTokens.curveEaseOut,
-    ));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _slideController,
+            curve: DesignTokens.curveEaseOut,
+          ),
+        );
 
     _slideController.forward();
   }
@@ -49,7 +50,8 @@ class _WelcomePageState extends State<WelcomePage> with TickerProviderStateMixin
   void _navigateToLogin() {
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const LoginPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
             position: Tween<Offset>(
@@ -67,7 +69,8 @@ class _WelcomePageState extends State<WelcomePage> with TickerProviderStateMixin
   void _navigateToRegister() {
     Navigator.of(context).push(
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) => const RegisterPage(),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const RegisterPage(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
             position: Tween<Offset>(
@@ -85,161 +88,134 @@ class _WelcomePageState extends State<WelcomePage> with TickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.lightBackgroundColor,
-      body: SafeArea(
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: Padding(
-            padding: Responsive.getHorizontalPadding(context).copyWith(
-              top: DesignTokens.space4xl,
-              bottom: DesignTokens.space4xl,
-            ),
-            child: Column(
-              children: [
-                const Spacer(flex: 2),
-                
-                // Logo Icon with proper VIEW colors
-                Container(
-                  width: Responsive.responsive<double>(
-                    context,
-                    mobile: 120,
-                    tablet: 140,
-                    desktop: 160,
-                  ),
-                  height: Responsive.responsive<double>(
-                    context,
-                    mobile: 120,
-                    tablet: 140,
-                    desktop: 160,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppTheme.primaryColor,
-                        AppTheme.brightPurple,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Icon(
-                    Icons.visibility,
-                    size: Responsive.responsive<double>(
-                      context,
-                      mobile: 60,
-                      tablet: 70,
-                      desktop: 80,
-                    ),
-                    color: AppTheme.white,
-                  ),
-                ),
-                
-                SizedBox(height: DesignTokens.space4xl),
-                
-                // Welcome Text with proper styling
-                Text(
-                  'Welcome to VIEW',
-                  style: DesignTokens.getHeadingStyle(
-                    context,
-                    fontSize: Responsive.responsive<double>(
-                      context,
-                      mobile: 32,
-                      tablet: 36,
-                      desktop: 40,
-                    ),
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.lightTextPrimary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                
-                SizedBox(height: DesignTokens.spaceLg),
-                
-                // Subtitle
-                Text(
-                  'Connect, Share, and Pay with ease',
-                  style: DesignTokens.getBodyStyle(
-                    context,
-                    fontSize: Responsive.responsive<double>(
-                      context,
-                      mobile: 16,
-                      tablet: 18,
-                      desktop: 20,
-                    ),
-                    color: AppTheme.lightTextSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                
-                const Spacer(flex: 3),
-                
-                // Login Button with proper VIEW primary color
-                CustomButton(
-                  text: 'Log in',
-                  onPressed: _navigateToLogin,
-                  type: ButtonType.primary,
-                  size: ButtonSize.large,
-                  fullWidth: true,
-                ),
-                
-                SizedBox(height: DesignTokens.spaceLg),
-                
-                // Sign up Button with outline style
-                CustomButton(
-                  text: 'Sign up',
-                  onPressed: _navigateToRegister,
-                  type: ButtonType.outline,
-                  size: ButtonSize.large,
-                  fullWidth: true,
-                ),
-                
-                SizedBox(height: DesignTokens.space4xl),
-                
-                // Continue With Accounts Text
-                Text(
-                  'Continue With Accounts',
-                  style: DesignTokens.getCaptionStyle(
-                    context,
-                    fontSize: 14,
-                    color: AppTheme.lightTextSecondary,
-                  ),
-                ),
-                
-                SizedBox(height: DesignTokens.spaceLg),
-                
-                // Social Login Buttons with proper colors
-                Row(
-                  children: [
-                    Expanded(
-                      child: CustomButton(
-                        text: 'GOOGLE',
-                        onPressed: () {
-                          // TODO: Implement Google login
-                        },
-                        type: ButtonType.outline,
-                        size: ButtonSize.medium,
-                        customColor: const Color(0xFFDB4437),
+      body: Stack(
+        children: [
+          // Background image
+          const AbstractBackground(),
+
+          // Content overlay - Three layers only
+          Column(
+            children: [
+              // Layer 1 & 2: Welcome Text and Tagline (Centered)
+              Expanded(
+                child: SafeArea(
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Center(
+                      child: Padding(
+                        padding: Responsive.getHorizontalPadding(context),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Welcome to VIEW',
+                              style: DesignTokens.getHeadingStyle(
+                                context,
+                                fontSize: Responsive.responsive<double>(
+                                  context,
+                                  mobile: 36,
+                                  tablet: 42,
+                                  desktop: 48,
+                                ),
+                                fontWeight: FontWeight.w800, // Extra bold
+                                color: AppTheme.white,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+
+                            SizedBox(height: DesignTokens.spaceLg),
+
+                            // Tagline
+                            Text(
+                              'Connect, Share, and Pay with ease',
+                              style: DesignTokens.getBodyStyle(
+                                context,
+                                fontSize: Responsive.responsive<double>(
+                                  context,
+                                  mobile: 16,
+                                  tablet: 18,
+                                  desktop: 20,
+                                ),
+                                color: AppTheme.white.withValues(alpha: 0.9),
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    SizedBox(width: DesignTokens.spaceLg),
-                    Expanded(
-                      child: CustomButton(
-                        text: 'FACEBOOK',
-                        onPressed: () {
-                          // TODO: Implement Facebook login
-                        },
-                        type: ButtonType.outline,
-                        size: ButtonSize.medium,
-                        customColor: const Color(0xFF4267B2),
+                  ),
+                ),
+              ),
+
+              // Layer 3: Bottom Buttons (Side by side, no overlap)
+              Row(
+                children: [
+                  // Sign in button (left side, dark style)
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _navigateToLogin,
+                      child: Container(
+                        height: 80,
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(0),
+                            topRight: Radius.circular(0),
+                            bottomLeft: Radius.circular(0),
+                            bottomRight: Radius.circular(0),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Sign in',
+                            style: DesignTokens.getBodyStyle(
+                              context,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.white,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+
+                  // Sign up button (right side, white style with curved top-left edge)
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _navigateToRegister,
+                      child: Container(
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppTheme.white,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(
+                              32,
+                            ), // Only curved top-left
+                            topRight: Radius.circular(0),
+                            bottomLeft: Radius.circular(0),
+                            bottomRight: Radius.circular(0),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Sign up',
+                            style: DesignTokens.getBodyStyle(
+                              context,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ),
+        ],
       ),
     );
   }
