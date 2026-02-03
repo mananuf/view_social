@@ -1,9 +1,9 @@
 use crate::api::dto::common::SuccessResponse;
 use crate::api::dto::user::{UpdateProfileRequest, UserDTO};
 use crate::api::middleware::auth::AuthUser;
+use crate::application::services::UserManagementService;
 use crate::domain::entities::{UpdateUserRequest, User};
 use crate::domain::errors::AppError;
-use crate::domain::repositories::UserRepository;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -16,7 +16,7 @@ use uuid::Uuid;
 // Application state for user handlers
 #[derive(Clone)]
 pub struct UserState {
-    pub user_repo: Arc<dyn UserRepository>,
+    pub user_service: Arc<UserManagementService>,
 }
 
 // GET /users/me - Get current user profile
@@ -25,10 +25,9 @@ pub async fn get_current_user(
     State(state): State<UserState>,
 ) -> Result<Response, AppError> {
     let user = state
-        .user_repo
-        .find_by_id(auth_user.user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+        .user_service
+        .get_user_profile(auth_user.user_id)
+        .await?;
 
     let user_dto = user_to_dto(&user);
 
@@ -48,23 +47,17 @@ pub async fn update_current_user(
     State(state): State<UserState>,
     Json(payload): Json<UpdateProfileRequest>,
 ) -> Result<Response, AppError> {
-    let mut user = state
-        .user_repo
-        .find_by_id(auth_user.user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
-
-    // Update user with new data
+    // Update user with new data using the service
     let update_request = UpdateUserRequest {
         display_name: payload.display_name,
         bio: payload.bio,
         avatar_url: payload.avatar_url,
     };
 
-    user.update(update_request)?;
-
-    // Save updated user
-    let updated_user = state.user_repo.update(&user).await?;
+    let updated_user = state
+        .user_service
+        .update_profile(auth_user.user_id, update_request)
+        .await?;
 
     let user_dto = user_to_dto(&updated_user);
 
@@ -83,11 +76,7 @@ pub async fn get_user_by_id(
     Path(user_id): Path<Uuid>,
     State(state): State<UserState>,
 ) -> Result<Response, AppError> {
-    let user = state
-        .user_repo
-        .find_by_id(user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+    let user = state.user_service.get_user_profile(user_id).await?;
 
     let user_dto = user_to_dto(&user);
 
@@ -107,31 +96,11 @@ pub async fn follow_user(
     Path(user_id): Path<Uuid>,
     State(state): State<UserState>,
 ) -> Result<Response, AppError> {
-    // Check if trying to follow self
-    if auth_user.user_id == user_id {
-        return Err(AppError::BadRequest("Cannot follow yourself".to_string()));
-    }
-
-    // Check if user to follow exists
-    let _target_user = state
-        .user_repo
-        .find_by_id(user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
-
-    // Check if already following
-    if state
-        .user_repo
-        .is_following(auth_user.user_id, user_id)
-        .await?
-    {
-        return Err(AppError::Conflict(
-            "Already following this user".to_string(),
-        ));
-    }
-
-    // Create follow relationship
-    state.user_repo.follow(auth_user.user_id, user_id).await?;
+    // Use the service to handle follow logic with proper validation
+    state
+        .user_service
+        .follow_user(auth_user.user_id, user_id)
+        .await?;
 
     let response = serde_json::json!({
         "success": true,
@@ -147,26 +116,103 @@ pub async fn unfollow_user(
     Path(user_id): Path<Uuid>,
     State(state): State<UserState>,
 ) -> Result<Response, AppError> {
-    // Check if trying to unfollow self
-    if auth_user.user_id == user_id {
-        return Err(AppError::BadRequest("Cannot unfollow yourself".to_string()));
-    }
-
-    // Check if currently following
-    if !state
-        .user_repo
-        .is_following(auth_user.user_id, user_id)
-        .await?
-    {
-        return Err(AppError::BadRequest("Not following this user".to_string()));
-    }
-
-    // Remove follow relationship
-    state.user_repo.unfollow(auth_user.user_id, user_id).await?;
+    // Use the service to handle unfollow logic with proper validation
+    state
+        .user_service
+        .unfollow_user(auth_user.user_id, user_id)
+        .await?;
 
     let response = serde_json::json!({
         "success": true,
         "message": "Successfully unfollowed user"
+    });
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+// GET /users/:id/followers - Get user's followers
+pub async fn get_user_followers(
+    Path(user_id): Path<Uuid>,
+    State(state): State<UserState>,
+) -> Result<Response, AppError> {
+    let followers = state
+        .user_service
+        .get_user_followers(user_id, 50, 0) // Default pagination
+        .await?;
+
+    let follower_dtos: Vec<UserDTO> = followers.iter().map(user_to_dto).collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Followers retrieved successfully".to_string(),
+            Some(serde_json::to_value(follower_dtos).unwrap()),
+        )),
+    )
+        .into_response())
+}
+
+// GET /users/:id/following - Get users that a user is following
+pub async fn get_user_following(
+    Path(user_id): Path<Uuid>,
+    State(state): State<UserState>,
+) -> Result<Response, AppError> {
+    let following = state
+        .user_service
+        .get_user_following(user_id, 50, 0) // Default pagination
+        .await?;
+
+    let following_dtos: Vec<UserDTO> = following.iter().map(user_to_dto).collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Following list retrieved successfully".to_string(),
+            Some(serde_json::to_value(following_dtos).unwrap()),
+        )),
+    )
+        .into_response())
+}
+
+// GET /users/search?q=query - Search for users
+pub async fn search_users(
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    State(state): State<UserState>,
+) -> Result<Response, AppError> {
+    let query = params
+        .get("q")
+        .ok_or_else(|| AppError::BadRequest("Query parameter 'q' is required".to_string()))?;
+
+    let users = state
+        .user_service
+        .search_users(query, 20, 0) // Default pagination
+        .await?;
+
+    let user_dtos: Vec<UserDTO> = users.iter().map(user_to_dto).collect();
+
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Users found successfully".to_string(),
+            Some(serde_json::to_value(user_dtos).unwrap()),
+        )),
+    )
+        .into_response())
+}
+
+// GET /users/:follower_id/following/:following_id - Check if user A follows user B
+pub async fn check_following_status(
+    Path((follower_id, following_id)): Path<(Uuid, Uuid)>,
+    State(state): State<UserState>,
+) -> Result<Response, AppError> {
+    let is_following = state
+        .user_service
+        .is_following(follower_id, following_id)
+        .await?;
+
+    let response = serde_json::json!({
+        "success": true,
+        "is_following": is_following
     });
 
     Ok((StatusCode::OK, Json(response)).into_response())
