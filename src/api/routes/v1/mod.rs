@@ -14,7 +14,7 @@ use axum::Router;
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .merge(health::create_router())
-        .merge(auth::create_router(state.clone()))
+        .nest("/auth", auth::create_router(state.clone()))
         .merge(posts::create_router(state.clone()))
         .merge(messages::create_router(state.clone()))
         .merge(payments::create_router(state.clone()))
