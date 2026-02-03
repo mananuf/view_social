@@ -174,32 +174,32 @@
   - GET /transactions for transaction history
   - _Requirements: 5.1, 6.1_
 
-- [ ] 8. Implement WebSocket real-time features
-- [-] 8.1 Create WebSocket connection manager
+- [x] 8. Implement WebSocket real-time features
+- [x] 8.1 Create WebSocket connection manager
   - Implement connection lifecycle management
   - Create user presence tracking
   - Add connection cleanup on disconnect
   - _Requirements: 4.1, 4.2_
 
-- [ ] 8.2 Implement WebSocket event system
+- [x] 8.2 Implement WebSocket event system
   - Create WebSocketEvent enum for all event types
   - Implement message broadcasting to conversation participants
   - Add typing indicator propagation
   - _Requirements: 4.2, 7.1_
 
-- [ ] 8.3 Write property test for typing indicator propagation
+- [x] 8.3 Write property test for typing indicator propagation
   - **Property 10: Typing indicator propagation**
   - **Validates: Requirements 4.2**
 
-- [ ] 8.4 Implement real-time payment notifications
+- [x] 8.4 Implement real-time payment notifications
   - Send payment received events via WebSocket
   - Broadcast payment confirmations
   - Add payment request notifications
   - _Requirements: 5.1, 7.1_
 
 - [ ] 9. Implement application layer services
-- [ ] 9.1 Create user management service
-  - Implement user registration with wallet creation
+- [x] 9.1 Create user management service
+  <!-- - Implement user registration with wallet creation -->
   - Add profile update coordination
   - Create follow/unfollow operations
   - _Requirements: 1.1, 1.2, 1.3_
