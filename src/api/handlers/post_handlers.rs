@@ -2,6 +2,7 @@ use crate::api::dto::common::{PaginatedResponse, SuccessResponse};
 use crate::api::dto::post::{CreatePostRequest, MediaAttachmentDTO, PostDTO};
 use crate::api::handlers::user_handlers::user_to_dto;
 use crate::api::middleware::auth::AuthUser;
+use crate::api::websocket::{ConnectionManager, WebSocketEvent};
 use crate::domain::entities::{
     CreatePostRequest as DomainCreatePostRequest, MediaAttachment, Post, PostContentType,
     PostVisibility,
@@ -23,6 +24,7 @@ use uuid::Uuid;
 pub struct PostState {
     pub post_repo: Arc<dyn PostRepository>,
     pub user_repo: Arc<dyn UserRepository>,
+    pub connection_manager: ConnectionManager,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,7 +151,7 @@ pub async fn like_post(
     State(state): State<PostState>,
 ) -> Result<Response, AppError> {
     // Check if post exists
-    let _post = state
+    let post = state
         .post_repo
         .find_by_id(post_id)
         .await?
@@ -170,6 +172,25 @@ pub async fn like_post(
         .like_post(auth_user.user_id, post_id)
         .await?;
     state.post_repo.increment_like_count(post_id).await?;
+
+    // Send WebSocket notification to post author (if not self-like)
+    if post.user_id != auth_user.user_id {
+        let like_event = WebSocketEvent::PostLiked {
+            post_id,
+            user_id: auth_user.user_id,
+        };
+
+        state
+            .connection_manager
+            .send_to_user(post.user_id, like_event)
+            .await;
+
+        tracing::debug!(
+            "Sent post like notification for post {} to user {}",
+            post_id,
+            post.user_id
+        );
+    }
 
     let response = serde_json::json!({
         "success": true,

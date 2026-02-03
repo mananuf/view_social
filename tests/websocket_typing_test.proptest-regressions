@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9d15abb97b5ebb40c9beea41b94d377e600c07b7186ee27b1949bd01e970ec98 # shrinks to conversation_id = "a00a0aa0-aa00-000a-aaa0-a000a0aa0a00", typing_user_id = "a0a000aa-0aa0-0a0a-a000-00aa000aaaa0", participant_ids = ["00aaa0a0-00aa-0a0a-0aaa-00a0aaa00000", "00aaa000-aa00-000a-a000-a0aaaa0aaa00"], is_typing = false

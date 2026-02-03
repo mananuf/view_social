@@ -2,6 +2,7 @@ use crate::api::dto::common::{PaginatedResponse, SuccessResponse};
 use crate::api::dto::payment::{SetPinRequest, TransactionDTO, TransferRequest, WalletDTO};
 use crate::api::handlers::user_handlers::user_to_dto;
 use crate::api::middleware::auth::AuthUser;
+use crate::api::websocket::{ConnectionManager, WebSocketEvent};
 use crate::domain::entities::{CreateTransactionRequest, Transaction, TransactionType, Wallet};
 use crate::domain::errors::AppError;
 use crate::domain::repositories::{UserRepository, WalletRepository};
@@ -21,6 +22,7 @@ use std::sync::Arc;
 pub struct PaymentState {
     pub wallet_repo: Arc<dyn WalletRepository>,
     pub user_repo: Arc<dyn UserRepository>,
+    pub connection_manager: ConnectionManager,
 }
 
 // Query parameters for transaction history
@@ -30,6 +32,14 @@ pub struct TransactionQuery {
     pub limit: i64,
     #[serde(default)]
     pub offset: i64,
+}
+
+// Request for sending payment request notifications
+#[derive(Debug, Deserialize)]
+pub struct PaymentRequestNotification {
+    pub target_user_id: uuid::Uuid,
+    pub amount: String,
+    pub description: Option<String>,
 }
 
 fn default_limit() -> i64 {
@@ -181,6 +191,24 @@ pub async fn create_transfer(
         Some(&receiver_user),
     );
 
+    // Send real-time payment notification to receiver via WebSocket
+    let payment_event = WebSocketEvent::PaymentReceived {
+        transaction_id: completed_transaction.id,
+        amount: amount.to_string(),
+        sender_id: auth_user.user_id,
+    };
+
+    state
+        .connection_manager
+        .send_to_user(payload.receiver_user_id, payment_event)
+        .await;
+
+    tracing::info!(
+        "Sent payment notification for transaction {} to user {}",
+        completed_transaction.id,
+        payload.receiver_user_id
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(SuccessResponse::new(
@@ -251,6 +279,58 @@ pub async fn get_transaction_history(
     let response = PaginatedResponse::new(transaction_dtos, total, params.limit, params.offset);
 
     Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+// POST /payment-requests - Send payment request notification
+pub async fn send_payment_request(
+    auth_user: AuthUser,
+    State(state): State<PaymentState>,
+    Json(payload): Json<PaymentRequestNotification>,
+) -> Result<Response, AppError> {
+    // Validate amount
+    let amount = Decimal::from_str(&payload.amount)
+        .map_err(|_| AppError::ValidationError("Invalid amount format".to_string()))?;
+
+    if amount <= Decimal::ZERO {
+        return Err(AppError::ValidationError(
+            "Amount must be positive".to_string(),
+        ));
+    }
+
+    // Verify the target user exists
+    let target_user = state
+        .user_repo
+        .find_by_id(payload.target_user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Target user not found".to_string()))?;
+
+    // Send payment request notification via WebSocket
+    let payment_request_event = WebSocketEvent::PaymentReceived {
+        transaction_id: uuid::Uuid::new_v4(), // Temporary ID for request
+        amount: payload.amount.clone(),
+        sender_id: auth_user.user_id,
+    };
+
+    state
+        .connection_manager
+        .send_to_user(payload.target_user_id, payment_request_event)
+        .await;
+
+    tracing::info!(
+        "Sent payment request from user {} to user {} for amount {}",
+        auth_user.user_id,
+        payload.target_user_id,
+        payload.amount
+    );
+
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Payment request sent successfully".to_string(),
+            None,
+        )),
+    )
+        .into_response())
 }
 
 // Helper function to convert Wallet entity to WalletDTO

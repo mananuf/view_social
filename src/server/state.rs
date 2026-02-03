@@ -62,28 +62,31 @@ impl AppState {
 
         tracing::info!("✅ Authentication and verification services initialized");
 
+        // Create WebSocket state and start cleanup task
+        let ws_state = WebSocketState::new();
+        ws_state.start_cleanup_task();
+
+        tracing::info!("✅ WebSocket connection manager initialized");
+
         // Create domain-specific states
         let post_state = PostState {
             post_repo,
             user_repo: user_repo.clone(),
+            connection_manager: ws_state.connection_manager.clone(),
         };
 
         let message_state = MessageState {
             conversation_repo,
             message_repo,
             user_repo: user_repo.clone(),
+            connection_manager: ws_state.connection_manager.clone(),
         };
 
         let payment_state = PaymentState {
             wallet_repo,
             user_repo: user_repo.clone(),
+            connection_manager: ws_state.connection_manager.clone(),
         };
-
-        // Create WebSocket state and start cleanup task
-        let ws_state = WebSocketState::new();
-        ws_state.start_cleanup_task();
-
-        tracing::info!("✅ WebSocket connection manager initialized");
 
         Ok(Self {
             auth_state,

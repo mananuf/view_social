@@ -5,6 +5,7 @@ use crate::api::dto::messaging::{
 use crate::api::dto::payment::PaymentDataDTO;
 use crate::api::handlers::user_handlers::user_to_dto;
 use crate::api::middleware::auth::AuthUser;
+use crate::api::websocket::{ConnectionManager, WebSocketEvent};
 use crate::domain::entities::{CreateMessageRequest, Message, MessageType};
 use crate::domain::errors::AppError;
 use crate::domain::repositories::{ConversationRepository, MessageRepository, UserRepository};
@@ -25,6 +26,7 @@ pub struct MessageState {
     pub conversation_repo: Arc<dyn ConversationRepository>,
     pub message_repo: Arc<dyn MessageRepository>,
     pub user_repo: Arc<dyn UserRepository>,
+    pub connection_manager: ConnectionManager,
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,6 +42,16 @@ pub struct MessageQuery {
     #[serde(default = "default_message_limit")]
     pub limit: i64,
     pub before_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TypingIndicatorRequest {
+    pub is_typing: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarkReadRequest {
+    pub message_id: Uuid,
 }
 
 fn default_limit() -> i64 {
@@ -319,11 +331,178 @@ pub async fn send_message(
 
     let message_dto = message_to_dto(&created_message, &state).await?;
 
+    // Broadcast message to conversation participants via WebSocket
+    let (_, participant_ids, _, _, _) = state
+        .conversation_repo
+        .find_by_id(conversation_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+
+    // Send WebSocket event to all participants except sender
+    let recipients: Vec<Uuid> = participant_ids
+        .into_iter()
+        .filter(|id| *id != auth_user.user_id)
+        .collect();
+
+    if !recipients.is_empty() {
+        let ws_event = WebSocketEvent::MessageSent {
+            conversation_id,
+            message_id: created_message.id,
+            sender_id: auth_user.user_id,
+            content: created_message.content.unwrap_or_default(),
+        };
+
+        state
+            .connection_manager
+            .send_to_users(&recipients, ws_event)
+            .await;
+
+        tracing::debug!(
+            "Broadcasted message {} to {} participants",
+            created_message.id,
+            recipients.len()
+        );
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(SuccessResponse::new(
             "Message sent successfully".to_string(),
             Some(serde_json::to_value(message_dto).unwrap()),
+        )),
+    )
+        .into_response())
+}
+
+// POST /conversations/:id/typing - Send typing indicator
+pub async fn send_typing_indicator(
+    auth_user: AuthUser,
+    Path(conversation_id): Path<Uuid>,
+    State(state): State<MessageState>,
+    Json(payload): Json<TypingIndicatorRequest>,
+) -> Result<Response, AppError> {
+    // Check if user is participant in conversation
+    if !state
+        .conversation_repo
+        .is_participant(conversation_id, auth_user.user_id)
+        .await?
+    {
+        return Err(AppError::Forbidden);
+    }
+
+    // Get conversation participants
+    let (_, participant_ids, _, _, _) = state
+        .conversation_repo
+        .find_by_id(conversation_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+
+    // Send typing indicator to all participants except sender
+    let recipients: Vec<Uuid> = participant_ids
+        .into_iter()
+        .filter(|id| *id != auth_user.user_id)
+        .collect();
+
+    if !recipients.is_empty() {
+        let ws_event = if payload.is_typing {
+            WebSocketEvent::TypingStarted {
+                conversation_id,
+                user_id: auth_user.user_id,
+            }
+        } else {
+            WebSocketEvent::TypingStopped {
+                conversation_id,
+                user_id: auth_user.user_id,
+            }
+        };
+
+        state
+            .connection_manager
+            .send_to_users(&recipients, ws_event)
+            .await;
+
+        tracing::debug!(
+            "Sent typing indicator ({}) from user {} to {} participants in conversation {}",
+            if payload.is_typing {
+                "started"
+            } else {
+                "stopped"
+            },
+            auth_user.user_id,
+            recipients.len(),
+            conversation_id
+        );
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Typing indicator sent successfully".to_string(),
+            None,
+        )),
+    )
+        .into_response())
+}
+
+// POST /conversations/:id/read - Mark messages as read
+pub async fn mark_messages_read(
+    auth_user: AuthUser,
+    Path(conversation_id): Path<Uuid>,
+    State(state): State<MessageState>,
+    Json(payload): Json<MarkReadRequest>,
+) -> Result<Response, AppError> {
+    // Check if user is participant in conversation
+    if !state
+        .conversation_repo
+        .is_participant(conversation_id, auth_user.user_id)
+        .await?
+    {
+        return Err(AppError::Forbidden);
+    }
+
+    // Mark message as read
+    state
+        .message_repo
+        .mark_as_read(payload.message_id, auth_user.user_id)
+        .await?;
+
+    // Get conversation participants to broadcast read receipt
+    let (_, participant_ids, _, _, _) = state
+        .conversation_repo
+        .find_by_id(conversation_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Conversation not found".to_string()))?;
+
+    // Send read receipt to all participants except the reader
+    let recipients: Vec<Uuid> = participant_ids
+        .into_iter()
+        .filter(|id| *id != auth_user.user_id)
+        .collect();
+
+    if !recipients.is_empty() {
+        let ws_event = WebSocketEvent::MessageRead {
+            message_id: payload.message_id,
+            user_id: auth_user.user_id,
+        };
+
+        state
+            .connection_manager
+            .send_to_users(&recipients, ws_event)
+            .await;
+
+        tracing::debug!(
+            "Sent read receipt for message {} from user {} to {} participants",
+            payload.message_id,
+            auth_user.user_id,
+            recipients.len()
+        );
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(SuccessResponse::new(
+            "Message marked as read".to_string(),
+            None,
         )),
     )
         .into_response())
