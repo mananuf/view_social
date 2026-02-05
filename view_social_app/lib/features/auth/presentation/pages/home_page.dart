@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/design_tokens.dart';
 import '../../../../shared/widgets/custom_button.dart';
+import '../../../messaging/presentation/pages/chats_page.dart';
 import '../bloc/auth_bloc.dart';
 import 'welcome_page.dart';
 
@@ -418,11 +419,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildMessagesPage() {
-    return _buildPlaceholderPage(
-      icon: Icons.chat_bubble_outline,
-      title: 'Messages',
-      subtitle: 'Your conversations will appear here',
-    );
+    return const ChatsPage();
   }
 
   Widget _buildPaymentsPage() {
