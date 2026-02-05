@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/design_tokens.dart';
-import '../../../../core/theme/responsive.dart';
 import '../../../../shared/widgets/custom_button.dart';
+import '../../../../shared/widgets/abstract_background.dart';
 import '../bloc/auth_bloc.dart';
 import 'home_page.dart';
 
@@ -50,7 +50,7 @@ class _VerifyEmailPageState extends State<VerifyEmailPage>
     );
 
     _slideAnimation =
-        Tween<Offset>(begin: const Offset(1.0, 0.0), end: Offset.zero).animate(
+        Tween<Offset>(begin: const Offset(0.0, 1.0), end: Offset.zero).animate(
           CurvedAnimation(
             parent: _slideController,
             curve: DesignTokens.curveEaseOut,
@@ -198,87 +198,105 @@ class _VerifyEmailPageState extends State<VerifyEmailPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.lightTextSecondary.withValues(alpha: 0.1),
-      body: SafeArea(
-        child: BlocListener<AuthBloc, AuthState>(
-          listener: (context, state) {
-            if (state is AuthLoading) {
-              setState(() {
-                _isLoading = true;
-              });
-            } else {
-              setState(() {
-                _isLoading = false;
-              });
-            }
+      body: Stack(
+        children: [
+          // Abstract background - ADDED
+          const AbstractBackground(),
 
-            if (state is AuthSuccess) {
-              // Navigate to home page on successful verification
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) =>
-                      const HomePage(),
-                  transitionsBuilder:
-                      (context, animation, secondaryAnimation, child) {
-                        return FadeTransition(opacity: animation, child: child);
-                      },
-                  transitionDuration: DesignTokens.animationNormal,
-                ),
-                (route) => false,
-              );
-            } else if (state is ResendVerificationSuccess) {
-              _showSnackBar(
-                'Verification code sent successfully',
-                AppTheme.successColor,
-              );
-              // Clear existing codes
-              for (var controller in _controllers) {
-                controller.clear();
-              }
-              _focusNodes[0].requestFocus();
-            } else if (state is AuthError) {
-              _showSnackBar(state.message, AppTheme.errorColor);
-            }
-          },
-          child: SlideTransition(
-            position: _slideAnimation,
-            child: Column(
-              children: [
-                // App Bar
-                Padding(
-                  padding: DesignTokens.paddingLg,
-                  child: Row(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: AppTheme.white,
-                          borderRadius: BorderRadius.circular(12),
+          // Content
+          Stack(
+            children: [
+              SafeArea(
+                child: BlocListener<AuthBloc, AuthState>(
+                  listener: (context, state) {
+                    if (state is AuthLoading) {
+                      setState(() {
+                        _isLoading = true;
+                      });
+                    } else {
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    }
+
+                    if (state is AuthSuccess) {
+                      // Navigate to home page on successful verification
+                      Navigator.of(context).pushAndRemoveUntil(
+                        PageRouteBuilder(
+                          pageBuilder: (context, animation, secondaryAnimation) =>
+                              const HomePage(),
+                          transitionsBuilder:
+                              (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(opacity: animation, child: child);
+                              },
+                          transitionDuration: DesignTokens.animationNormal,
                         ),
-                        child: IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(
-                            Icons.arrow_back_ios,
-                            color: AppTheme.lightTextPrimary,
-                          ),
+                        (route) => false,
+                      );
+                    } else if (state is ResendVerificationSuccess) {
+                      _showSnackBar(
+                        'Verification code sent successfully',
+                        AppTheme.successColor,
+                      );
+                      // Clear existing codes
+                      for (var controller in _controllers) {
+                        controller.clear();
+                      }
+                      _focusNodes[0].requestFocus();
+                    } else if (state is AuthError) {
+                      _showSnackBar(state.message, AppTheme.errorColor);
+                    }
+                  },
+                  child: Column(
+                    children: [
+                      // Back button
+                      Padding(
+                        padding: DesignTokens.paddingLg,
+                        child: Row(
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: AppTheme.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: IconButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(
+                                  Icons.arrow_back_ios_new,
+                                  color: AppTheme.lightTextPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                      const Spacer(),
                     ],
                   ),
                 ),
+              ),
 
-                // Content
-                Expanded(
-                  child: Center(
-                    child: Container(
-                      margin: Responsive.getHorizontalPadding(context),
-                      padding: DesignTokens.padding3xl,
-                      decoration: BoxDecoration(
-                        color: AppTheme.white,
-                        borderRadius: DesignTokens.borderRadius3xl,
+              // White card - positioned to extend to actual bottom
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Container(
+                    width: double.infinity,
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    decoration: BoxDecoration(
+                      color: AppTheme.white,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(32),
+                        topRight: Radius.circular(32),
                       ),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: DesignTokens.padding3xl,
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
+                          SizedBox(height: DesignTokens.spaceLg),
+
                           // Title
                           Text(
                             widget.verificationType == 'email'
@@ -286,9 +304,9 @@ class _VerifyEmailPageState extends State<VerifyEmailPage>
                                 : 'Verify Phone',
                             style: DesignTokens.getHeadingStyle(
                               context,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.lightTextPrimary,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryColor,
                             ),
                           ),
 
@@ -322,17 +340,19 @@ class _VerifyEmailPageState extends State<VerifyEmailPage>
 
                           SizedBox(height: DesignTokens.space4xl),
 
-                          // OTP Input Fields
+                          // OTP Input Fields - FIXED padding/border overlap
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: List.generate(6, (index) {
                               return Container(
                                 width: 48,
-                                height: 48,
+                                height: 56,
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: AppTheme.lightBorderColor,
-                                    width: 1.5,
+                                    color: _controllers[index].text.isNotEmpty
+                                        ? AppTheme.primaryColor
+                                        : AppTheme.lightBorderColor,
+                                    width: 2,
                                   ),
                                   borderRadius: DesignTokens.borderRadiusLg,
                                 ),
@@ -342,14 +362,17 @@ class _VerifyEmailPageState extends State<VerifyEmailPage>
                                   textAlign: TextAlign.center,
                                   keyboardType: TextInputType.number,
                                   maxLength: 1,
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black,
+                                  style: DesignTokens.getHeadingStyle(
+                                    context,
+                                    fontSize: 34,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.lightTextPrimary,
                                   ),
                                   decoration: const InputDecoration(
                                     border: InputBorder.none,
                                     counterText: '',
+                                    contentPadding: EdgeInsets.only(bottom: 15.0),
+                                    isDense: true,
                                   ),
                                   onChanged: (value) =>
                                       _onCodeChanged(value, index),
@@ -383,27 +406,34 @@ class _VerifyEmailPageState extends State<VerifyEmailPage>
                             useGradient: true,
                           ),
 
-                          SizedBox(height: DesignTokens.spaceLg),
+                          SizedBox(height: DesignTokens.space3xl),
 
                           // Send Again Button
-                          CustomButton(
-                            text: 'Send Again',
-                            onPressed: _resendCode,
-                            isLoading: _isResending,
-                            type: ButtonType.ghost,
-                            fullWidth: true,
-                            size: ButtonSize.medium,
-                            customColor: AppTheme.lightTextSecondary,
+                          GestureDetector(
+                            onTap: _isResending ? null : _resendCode,
+                            child: Text(
+                              'Send Again',
+                              style: DesignTokens.getBodyStyle(
+                                context,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: _isResending
+                                    ? AppTheme.lightTextSecondary.withOpacity(0.5)
+                                    : AppTheme.lightTextSecondary,
+                              ),
+                            ),
                           ),
+
+                          SizedBox(height: DesignTokens.space2xl),
                         ],
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ),
+        ],
       ),
     );
   }

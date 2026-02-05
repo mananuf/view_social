@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/design_tokens.dart';
-import '../../../../core/theme/responsive.dart';
 import '../../../../shared/widgets/custom_button.dart';
+import '../../../../shared/widgets/abstract_background.dart';
 import 'forgot_password_page.dart';
 
 class VerifyPhonePage extends StatefulWidget {
@@ -41,7 +41,7 @@ class _VerifyPhonePageState extends State<VerifyPhonePage>
     );
 
     _slideAnimation =
-        Tween<Offset>(begin: const Offset(1.0, 0.0), end: Offset.zero).animate(
+        Tween<Offset>(begin: const Offset(0.0, 1.0), end: Offset.zero).animate(
           CurvedAnimation(
             parent: _slideController,
             curve: DesignTokens.curveEaseOut,
@@ -239,166 +239,197 @@ class _VerifyPhonePageState extends State<VerifyPhonePage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.lightTextSecondary.withValues(alpha: 0.1),
-      body: SafeArea(
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: Column(
+      body: Stack(
+        children: [
+          // Abstract background - ADDED
+          const AbstractBackground(),
+
+          // Content
+          Stack(
             children: [
-              // App Bar
-              Padding(
-                padding: DesignTokens.paddingLg,
-                child: Row(
+              SafeArea(
+                child: Column(
                   children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: AppTheme.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(
-                          Icons.arrow_back_ios,
-                          color: AppTheme.lightTextPrimary,
-                        ),
+                    // Back button
+                    Padding(
+                      padding: DesignTokens.paddingLg,
+                      child: Row(
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.white,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(
+                                Icons.arrow_back_ios_new,
+                                color: AppTheme.lightTextPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    const Spacer(),
                   ],
                 ),
               ),
 
-              // Content
-              Expanded(
-                child: Center(
+              // White card - positioned to extend to actual bottom
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SlideTransition(
+                  position: _slideAnimation,
                   child: Container(
-                    margin: Responsive.getHorizontalPadding(context),
-                    padding: DesignTokens.padding3xl,
+                    width: double.infinity,
+                    height: MediaQuery.of(context).size.height * 0.7,
                     decoration: BoxDecoration(
                       color: AppTheme.white,
-                      borderRadius: DesignTokens.borderRadius3xl,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(32),
+                        topRight: Radius.circular(32),
+                      ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Title
-                        Text(
-                          'Verify Phone',
-                          style: DesignTokens.getHeadingStyle(
-                            context,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.lightTextPrimary,
+                    child: SingleChildScrollView(
+                      padding: DesignTokens.padding3xl,
+                      child: Column(
+                        children: [
+                          SizedBox(height: DesignTokens.spaceLg),
+
+                          // Title
+                          Text(
+                            'Verify Phone',
+                            style: DesignTokens.getHeadingStyle(
+                              context,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryColor,
+                            ),
                           ),
-                        ),
 
-                        SizedBox(height: DesignTokens.spaceLg),
+                          SizedBox(height: DesignTokens.spaceLg),
 
-                        // Subtitle
-                        Text(
-                          'We Have Sent Code To Your Phone',
-                          style: DesignTokens.getBodyStyle(
-                            context,
-                            fontSize: 14,
-                            color: AppTheme.lightTextSecondary,
+                          // Subtitle
+                          Text(
+                            'We Have Sent Code To Your Phone',
+                            style: DesignTokens.getBodyStyle(
+                              context,
+                              fontSize: 14,
+                              color: AppTheme.lightTextSecondary,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
-                        ),
 
-                        SizedBox(height: DesignTokens.space2xl),
+                          SizedBox(height: DesignTokens.space2xl),
 
-                        // Phone Display
-                        Text(
-                          _maskedPhoneNumber,
-                          style: DesignTokens.getBodyStyle(
-                            context,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.lightTextPrimary,
+                          // Phone Display
+                          Text(
+                            _maskedPhoneNumber,
+                            style: DesignTokens.getBodyStyle(
+                              context,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.lightTextPrimary,
+                            ),
                           ),
-                        ),
 
-                        SizedBox(height: DesignTokens.space4xl),
+                          SizedBox(height: DesignTokens.space4xl),
 
-                        // OTP Input Fields
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: List.generate(6, (index) {
-                            return Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: AppTheme.lightBorderColor,
-                                  width: 1.5,
+                          // OTP Input Fields - FIXED padding/border overlap
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: List.generate(6, (index) {
+                              return Container(
+                                width: 48,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: _controllers[index].text.isNotEmpty
+                                        ? AppTheme.primaryColor
+                                        : AppTheme.lightBorderColor,
+                                    width: 2,
+                                  ),
+                                  borderRadius: DesignTokens.borderRadiusLg,
                                 ),
-                                borderRadius: DesignTokens.borderRadiusLg,
+                                child: TextField(
+                                  controller: _controllers[index],
+                                  focusNode: _focusNodes[index],
+                                  textAlign: TextAlign.center,
+                                  keyboardType: TextInputType.number,
+                                  maxLength: 1,
+                                  style: DesignTokens.getHeadingStyle(
+                                    context,
+                                    fontSize: 34,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.lightTextPrimary,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    counterText: '',
+                                    contentPadding: EdgeInsets.only(bottom: 15.0),
+                                    isDense: true,
+                                  ),
+                                  onChanged: (value) =>
+                                      _onCodeChanged(value, index),
+                                  onTap: () {
+                                    _controllers[index]
+                                        .selection = TextSelection.fromPosition(
+                                      TextPosition(
+                                        offset: _controllers[index].text.length,
+                                      ),
+                                    );
+                                  },
+                                  onSubmitted: (value) {
+                                    if (value.isEmpty && index > 0) {
+                                      _onBackspace(index);
+                                    }
+                                  },
+                                ),
+                              );
+                            }),
+                          ),
+
+                          SizedBox(height: DesignTokens.space4xl),
+
+                          // Verify Button
+                          CustomButton(
+                            text: 'Verify',
+                            onPressed: _verifyCode,
+                            isLoading: _isLoading,
+                            fullWidth: true,
+                            size: ButtonSize.large,
+                            useGradient: true,
+                          ),
+
+                          SizedBox(height: DesignTokens.space3xl),
+
+                          // Send Again Button - Simplified
+                          GestureDetector(
+                            onTap: _isResending ? null : _resendCode,
+                            child: Text(
+                              'Send Again',
+                              style: DesignTokens.getBodyStyle(
+                                context,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: _isResending
+                                    ? AppTheme.lightTextSecondary.withOpacity(0.5)
+                                    : AppTheme.lightTextSecondary,
                               ),
-                              child: TextField(
-                                controller: _controllers[index],
-                                focusNode: _focusNodes[index],
-                                textAlign: TextAlign.center,
-                                keyboardType: TextInputType.number,
-                                maxLength: 1,
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black,
-                                ),
-                                decoration: const InputDecoration(
-                                  border: InputBorder.none,
-                                  counterText: '',
-                                ),
-                                onChanged: (value) =>
-                                    _onCodeChanged(value, index),
-                                onTap: () {
-                                  _controllers[index]
-                                      .selection = TextSelection.fromPosition(
-                                    TextPosition(
-                                      offset: _controllers[index].text.length,
-                                    ),
-                                  );
-                                },
-                                onSubmitted: (value) {
-                                  if (value.isEmpty && index > 0) {
-                                    _onBackspace(index);
-                                  }
-                                },
-                              ),
-                            );
-                          }),
-                        ),
+                            ),
+                          ),
 
-                        SizedBox(height: DesignTokens.space4xl),
-
-                        // Verify Button
-                        CustomButton(
-                          text: 'Verify',
-                          onPressed: _verifyCode,
-                          isLoading: _isLoading,
-                          fullWidth: true,
-                          size: ButtonSize.large,
-                        ),
-
-                        SizedBox(height: DesignTokens.spaceLg),
-
-                        // Send Again Button
-                        CustomButton(
-                          text: 'Send Again',
-                          onPressed: _resendCode,
-                          isLoading: _isResending,
-                          type: ButtonType.ghost,
-                          fullWidth: true,
-                          size: ButtonSize.medium,
-                          customColor: AppTheme.lightTextSecondary,
-                        ),
-                      ],
+                          SizedBox(height: DesignTokens.space2xl),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
