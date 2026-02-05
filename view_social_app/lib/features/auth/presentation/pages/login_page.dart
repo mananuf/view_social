@@ -8,6 +8,7 @@ import '../../../../core/theme/design_tokens.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../bloc/auth_bloc.dart';
 import 'register_page.dart';
+import 'forgot_password_page.dart';
 import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -280,6 +281,53 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                                 onSubmitted: (_) => _handleLogin(),
                                 size: TextFieldSize.large,
                                 variant: TextFieldVariant.outlined,
+                              ),
+
+                              SizedBox(height: DesignTokens.spaceLg),
+
+                              // Forgot Password Link
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      PageRouteBuilder(
+                                        pageBuilder:
+                                            (
+                                              context,
+                                              animation,
+                                              secondaryAnimation,
+                                            ) => const ForgotPasswordPage(),
+                                        transitionsBuilder:
+                                            (
+                                              context,
+                                              animation,
+                                              secondaryAnimation,
+                                              child,
+                                            ) {
+                                              return SlideTransition(
+                                                position: Tween<Offset>(
+                                                  begin: const Offset(1.0, 0.0),
+                                                  end: Offset.zero,
+                                                ).animate(animation),
+                                                child: child,
+                                              );
+                                            },
+                                        transitionDuration:
+                                            DesignTokens.animationNormal,
+                                      ),
+                                    );
+                                  },
+                                  child: Text(
+                                    'Forgot password?',
+                                    style: DesignTokens.getBodyStyle(
+                                      context,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                ),
                               ),
 
                               SizedBox(height: DesignTokens.space4xl),
