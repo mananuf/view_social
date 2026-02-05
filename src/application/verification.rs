@@ -24,6 +24,10 @@ pub struct VerificationCode {
     pub attempts: u32,
     pub verified: bool,
     pub created_at: DateTime<Utc>,
+    // Store registration data for completing user creation after verification
+    pub username: Option<String>,
+    pub password_hash: Option<String>,
+    pub display_name: Option<String>,
 }
 
 impl VerificationCode {
@@ -39,6 +43,9 @@ impl VerificationCode {
             attempts: 0,
             verified: false,
             created_at: Utc::now(),
+            username: None,
+            password_hash: None,
+            display_name: None,
         }
     }
 
@@ -54,7 +61,22 @@ impl VerificationCode {
             attempts: 0,
             verified: false,
             created_at: Utc::now(),
+            username: None,
+            password_hash: None,
+            display_name: None,
         }
+    }
+
+    pub fn with_registration_data(
+        mut self,
+        username: String,
+        password_hash: String,
+        display_name: Option<String>,
+    ) -> Self {
+        self.username = Some(username);
+        self.password_hash = Some(password_hash);
+        self.display_name = display_name;
+        self
     }
 
     pub fn is_expired(&self) -> bool {
@@ -194,6 +216,65 @@ impl VerificationService {
         Ok(verification_id)
     }
 
+    /// Send email verification code with registration data
+    pub async fn send_email_verification_with_data(
+        &self,
+        email: &str,
+        user_name: &str,
+        user_id: Option<Uuid>,
+        username: String,
+        password_hash: String,
+        display_name: Option<String>,
+    ) -> Result<Uuid> {
+        println!(
+            "📧 Sending email verification with registration data to: {}",
+            email
+        );
+
+        // Check if there's already a recent verification code
+        if let Some(existing) = self.storage.get(email).await {
+            if existing.is_valid() {
+                println!(
+                    "⚠️ Verification code already exists and is valid for: {}",
+                    email
+                );
+                return Err(AppError::ValidationError(
+                    "Verification code already sent. Please wait before requesting a new one."
+                        .to_string(),
+                ));
+            }
+        }
+
+        let verification = VerificationCode::new_email(email, user_id).with_registration_data(
+            username,
+            password_hash,
+            display_name,
+        );
+        let verification_id = verification.id;
+
+        println!(
+            "📧 Generated verification code: {} for email: {}",
+            verification.code, email
+        );
+
+        // Generate email template
+        let template = self
+            .email_service
+            .generate_verification_template(user_name, &verification.code);
+
+        // Send email
+        self.email_service
+            .send_email(email, Some(user_name), template)
+            .map_err(|e| AppError::ExternalServiceError(format!("Failed to send email: {}", e)))?;
+
+        println!("📧 Email sent successfully to: {}", email);
+
+        // Store verification code
+        self.storage.store(verification).await;
+
+        Ok(verification_id)
+    }
+
     /// Send SMS verification code
     pub async fn send_sms_verification(&self, phone: &str, user_id: Option<Uuid>) -> Result<Uuid> {
         // Check if there's already a recent verification code
@@ -207,6 +288,44 @@ impl VerificationService {
         }
 
         let verification = VerificationCode::new_phone(phone, user_id);
+        let verification_id = verification.id;
+
+        // Send SMS
+        self.sms_service
+            .send_verification_code(phone, &verification.code)
+            .await
+            .map_err(|e| AppError::ExternalServiceError(format!("Failed to send SMS: {}", e)))?;
+
+        // Store verification code
+        self.storage.store(verification).await;
+
+        Ok(verification_id)
+    }
+
+    /// Send SMS verification code with registration data
+    pub async fn send_sms_verification_with_data(
+        &self,
+        phone: &str,
+        user_id: Option<Uuid>,
+        username: String,
+        password_hash: String,
+        display_name: Option<String>,
+    ) -> Result<Uuid> {
+        // Check if there's already a recent verification code
+        if let Some(existing) = self.storage.get(phone).await {
+            if existing.is_valid() {
+                return Err(AppError::ValidationError(
+                    "Verification code already sent. Please wait before requesting a new one."
+                        .to_string(),
+                ));
+            }
+        }
+
+        let verification = VerificationCode::new_phone(phone, user_id).with_registration_data(
+            username,
+            password_hash,
+            display_name,
+        );
         let verification_id = verification.id;
 
         // Send SMS

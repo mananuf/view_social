@@ -100,28 +100,41 @@ pub async fn register(
             .clone()
             .unwrap_or_else(|| format!("{}@temp.local", Uuid::new_v4())), // Temporary email for phone registration
         phone_number: phone_number.clone(),
-        password_hash,
-        display_name: payload.display_name,
+        password_hash: password_hash.clone(),
+        display_name: payload.display_name.clone(),
         bio: None,
     };
 
     // Create user (but don't save to database yet - wait for verification)
     let user = User::new(create_request)?;
 
-    // Send verification code
+    // Send verification code with registration data
     let verification_id = match payload.registration_type.as_str() {
         "email" => {
             let email_addr = email.as_ref().unwrap();
             state
                 .verification_service
-                .send_email_verification(email_addr, &payload.username, Some(user.id))
+                .send_email_verification_with_data(
+                    email_addr,
+                    &payload.username,
+                    Some(user.id),
+                    payload.username.clone(),
+                    password_hash,
+                    payload.display_name,
+                )
                 .await?
         }
         "phone" => {
             let phone_addr = phone_number.as_ref().unwrap();
             state
                 .verification_service
-                .send_sms_verification(phone_addr, Some(user.id))
+                .send_sms_verification_with_data(
+                    phone_addr,
+                    Some(user.id),
+                    payload.username.clone(),
+                    password_hash,
+                    payload.display_name,
+                )
                 .await?
         }
         _ => unreachable!(),
@@ -158,37 +171,31 @@ pub async fn verify_registration(
         .user_id
         .ok_or_else(|| AppError::ValidationError("Invalid verification session".to_string()))?;
 
-    // For now, we'll create a minimal user. In a production system, you'd want to
-    // store the complete registration data during the initial registration step
-    // and retrieve it here. This is a simplified implementation.
+    // Get stored registration data from verification
+    let username = verification
+        .username
+        .ok_or_else(|| AppError::ValidationError("Registration data not found".to_string()))?;
 
-    let (username, email, phone_number) = match verification.verification_type {
-        crate::application::verification::VerificationType::Email => (
-            format!("user_{}", &user_id.to_string()[..8]),
-            verification.target.clone(),
-            None,
-        ),
+    let password_hash = verification
+        .password_hash
+        .ok_or_else(|| AppError::ValidationError("Registration data not found".to_string()))?;
+
+    let (email, phone_number) = match verification.verification_type {
+        crate::application::verification::VerificationType::Email => {
+            (verification.target.clone(), None)
+        }
         crate::application::verification::VerificationType::Phone => (
-            format!("user_{}", &user_id.to_string()[..8]),
             format!("{}@temp.local", user_id),
             Some(verification.target.clone()),
         ),
     };
-
-    // Create a temporary password hash (user will need to set a proper password later)
-    // Generate a temporary password that meets validation requirements
-    let temp_password = format!(
-        "TempPass123_{}",
-        Uuid::new_v4().to_string().replace('-', "")[..8].to_uppercase()
-    );
-    let password_hash = state.password_service.hash_password(&temp_password)?;
 
     let create_request = CreateUserRequest {
         username,
         email,
         phone_number,
         password_hash,
-        display_name: None,
+        display_name: verification.display_name,
         bio: None,
     };
 
