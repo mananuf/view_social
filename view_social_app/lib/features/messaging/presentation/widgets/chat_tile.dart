@@ -181,7 +181,8 @@ class ChatTile extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: DesignTokens.spaceSm),
-                          Row(
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
                                 time,
@@ -197,7 +198,7 @@ class ChatTile extends StatelessWidget {
                                 ),
                               ),
                               if (unreadCount > 0) ...[
-                                const SizedBox(width: 4),
+                                const SizedBox(height: 4),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 6,

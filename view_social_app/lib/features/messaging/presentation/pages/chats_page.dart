@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/design_tokens.dart';
 import '../../../../shared/widgets/search_bar_widget.dart';
 import '../widgets/chat_tile.dart';
+import 'chat_detail_page.dart';
 
 class ChatsPage extends StatefulWidget {
   const ChatsPage({super.key});
@@ -338,9 +339,13 @@ class _ChatsPageState extends State<ChatsPage> {
                             _toggleSelection(chat.id);
                           } else {
                             // Navigate to chat detail
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Opening chat with ${chat.name}'),
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ChatDetailPage(
+                                  name: chat.name,
+                                  isOnline: chat.hasStatus,
+                                ),
                               ),
                             );
                           }
