@@ -3,8 +3,9 @@ use crate::api::handlers::message_handlers::MessageState;
 use crate::api::handlers::notification_handlers::NotificationState;
 use crate::api::handlers::payment_handlers::PaymentState;
 use crate::api::handlers::post_handlers::PostState;
+use crate::api::handlers::user_handlers::UserState;
 use crate::api::websocket::WebSocketState;
-use crate::application::services::NotificationService;
+use crate::application::services::{NotificationService, UserManagementService};
 use crate::application::verification::VerificationService;
 use crate::config::Config;
 use crate::domain::auth::JwtService;
@@ -20,6 +21,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub auth_state: AuthState,
+    pub user_state: UserState,
     pub post_state: PostState,
     pub message_state: MessageState,
     pub payment_state: PaymentState,
@@ -94,6 +96,14 @@ impl AppState {
             connection_manager: ws_state.connection_manager.clone(),
         };
 
+        // Initialize user management service (before payment_state to avoid move issues)
+        let user_service = Arc::new(UserManagementService::new(
+            user_repo.clone(),
+            wallet_repo.clone(),
+        ));
+
+        let user_state = UserState { user_service };
+
         let payment_state = PaymentState {
             wallet_repo,
             user_repo: user_repo.clone(),
@@ -112,6 +122,7 @@ impl AppState {
 
         Ok(Self {
             auth_state,
+            user_state,
             post_state,
             message_state,
             payment_state,

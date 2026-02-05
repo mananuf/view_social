@@ -28,12 +28,14 @@ class ApiRoutes {
   static const String addComment = '/posts'; // + /{id}/comments
 
   // Messages Routes
-  static const String conversations = '/messages/conversations';
-  static const String createConversation = '/messages/conversations';
-  static const String getConversation = '/messages/conversations'; // + /{id}
-  static const String sendMessage = '/messages';
-  static const String getMessages = '/messages'; // + ?conversation_id={id}
-  static const String markAsRead = '/messages'; // + /{id}/read
+  static const String conversations = '/conversations';
+  static const String createConversation = '/conversations';
+  static String conversationMessages(String conversationId) =>
+      '/conversations/$conversationId/messages';
+  static String conversationTyping(String conversationId) =>
+      '/conversations/$conversationId/typing';
+  static String conversationRead(String conversationId) =>
+      '/conversations/$conversationId/read';
 
   // Payments Routes
   static const String wallet = '/payments/wallet';
@@ -64,13 +66,11 @@ class ApiRoutes {
       '$getPostComments/$postId/comments';
   static String addCommentUrl(String postId) => '$addComment/$postId/comments';
   static String getConversationUrl(String conversationId) =>
-      '$getConversation/$conversationId';
+      '$conversations/$conversationId';
   static String getTransactionUrl(String transactionId) =>
       '$getTransaction/$transactionId';
   static String markNotificationReadUrl(String notificationId) =>
       '$markNotificationRead/$notificationId/read';
-  static String markMessageReadUrl(String messageId) =>
-      '$markAsRead/$messageId/read';
 }
 
 /// HTTP Methods

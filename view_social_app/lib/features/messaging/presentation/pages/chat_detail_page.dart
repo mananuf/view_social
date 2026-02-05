@@ -1,15 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/design_tokens.dart';
 import '../widgets/message_bubble.dart';
+import '../../data/datasources/messaging_remote_datasource.dart';
+import '../../data/models/message_model.dart';
 
 class ChatDetailPage extends StatefulWidget {
+  final String conversationId;
   final String name;
   final String? avatarUrl;
   final bool isOnline;
+  final MessagingRemoteDataSource messagingDataSource;
+  final String currentUserId;
 
   const ChatDetailPage({
     super.key,
+    required this.conversationId,
     required this.name,
+    required this.messagingDataSource,
+    required this.currentUserId,
     this.avatarUrl,
     this.isOnline = false,
   });
@@ -22,33 +31,46 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _showFab = false;
-
-  // Dummy messages
-  final List<MessageData> _messages = [
-    MessageData(
-      message: 'Hi, I just wanna know that how much time you\'ll be updated.',
-      time: '10:52',
-      isSent: false,
-      isRead: true,
-    ),
-    MessageData(
-      message: 'Maybe, Nearly July, 2022',
-      time: '10:53',
-      isSent: true,
-      isRead: true,
-    ),
-    MessageData(
-      message: 'Okay, I\'m Waiting....',
-      time: '10:53',
-      isSent: false,
-      isRead: true,
-    ),
-  ];
+  bool _isLoading = true;
+  List<MessageModel> _messages = [];
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
+    _loadMessages();
+  }
+
+  Future<void> _loadMessages() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final messages = await widget.messagingDataSource.getMessages(
+        widget.conversationId,
+        limit: 50,
+      );
+
+      setState(() {
+        _messages = messages.reversed.toList(); // Reverse to show oldest first
+        _isLoading = false;
+      });
+
+      // Scroll to bottom after loading
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
   }
 
   @override
@@ -69,31 +91,58 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     if (_messageController.text.trim().isEmpty) return;
 
-    setState(() {
-      _messages.add(
-        MessageData(
-          message: _messageController.text.trim(),
-          time: TimeOfDay.now().format(context),
-          isSent: true,
-          isRead: false,
-        ),
-      );
-      _messageController.clear();
-    });
+    final messageText = _messageController.text.trim();
+    _messageController.clear();
 
-    // Scroll to bottom
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: DesignTokens.animationNormal,
-          curve: DesignTokens.curveEaseOut,
+    try {
+      final sentMessage = await widget.messagingDataSource.sendMessage(
+        widget.conversationId,
+        messageText,
+        messageType: 'text',
+      );
+
+      setState(() {
+        _messages.add(sentMessage);
+      });
+
+      // Scroll to bottom
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: DesignTokens.animationNormal,
+            curve: DesignTokens.curveEaseOut,
+          );
+        }
+      });
+    } catch (e) {
+      // Show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send message: $e'),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
         );
       }
-    });
+      // Restore message text
+      _messageController.text = messageText;
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+    if (messageDate == today) {
+      return DateFormat('HH:mm').format(dateTime);
+    } else {
+      return DateFormat('MMM d, HH:mm').format(dateTime);
+    }
   }
 
   void _showOptionsMenu() {
@@ -195,7 +244,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: theme.colorScheme.primary.withOpacity(0.1),
+          color: theme.colorScheme.primary.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(DesignTokens.radiusLg),
         ),
         child: Icon(icon, color: theme.colorScheme.primary),
@@ -238,7 +287,9 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
               children: [
                 CircleAvatar(
                   radius: 20,
-                  backgroundColor: const Color(0xFF6A0DAD).withOpacity(0.1),
+                  backgroundColor: const Color(
+                    0xFF6A0DAD,
+                  ).withValues(alpha: 0.1),
                   child: widget.avatarUrl != null
                       ? ClipOval(
                           child: Image.network(
@@ -334,22 +385,88 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         children: [
           // Messages list
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(
-                vertical: DesignTokens.spaceLg,
-              ),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return MessageBubble(
-                  message: message.message,
-                  time: message.time,
-                  isSent: message.isSent,
-                  isRead: message.isRead,
-                );
-              },
-            ),
+            child: _isLoading
+                ? Center(
+                    child: CircularProgressIndicator(
+                      color: theme.colorScheme.primary,
+                    ),
+                  )
+                : _errorMessage != null
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 48,
+                          color: const Color(0xFFEF4444),
+                        ),
+                        const SizedBox(height: DesignTokens.spaceLg),
+                        Text(
+                          'Failed to load messages',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: DesignTokens.spaceSm),
+                        Text(
+                          _errorMessage!,
+                          style: theme.textTheme.bodySmall,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: DesignTokens.spaceLg),
+                        ElevatedButton(
+                          onPressed: _loadMessages,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  )
+                : _messages.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 64,
+                          color: isDark
+                              ? const Color(0xFF4B5563)
+                              : const Color(0xFFD1D5DB),
+                        ),
+                        const SizedBox(height: DesignTokens.spaceLg),
+                        Text(
+                          'No messages yet',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: DesignTokens.spaceSm),
+                        Text(
+                          'Start the conversation!',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isDark
+                                ? const Color(0xFF9CA3AF)
+                                : const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: DesignTokens.spaceLg,
+                    ),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      final isSent = message.sender?.id == widget.currentUserId;
+
+                      return MessageBubble(
+                        message: message.content ?? '',
+                        time: _formatTime(message.createdAt),
+                        isSent: isSent,
+                        isRead: message.isRead,
+                      );
+                    },
+                  ),
           ),
           // Input area
           Container(
@@ -357,7 +474,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
               color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -2),
                 ),
@@ -464,18 +581,4 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       ),
     );
   }
-}
-
-class MessageData {
-  final String message;
-  final String time;
-  final bool isSent;
-  final bool isRead;
-
-  MessageData({
-    required this.message,
-    required this.time,
-    required this.isSent,
-    required this.isRead,
-  });
 }

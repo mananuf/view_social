@@ -5,7 +5,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/pages/splash_page.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
-import 'features/messaging/presentation/pages/chats_page.dart';
 import 'injection_container.dart' as di;
 
 void main() async {
@@ -34,7 +33,6 @@ class ViewSocialApp extends StatelessWidget {
         themeMode: ThemeMode.system, // Automatically follows system preference
         home: const SplashPage(),
         debugShowCheckedModeBanner: false,
-        routes: {'/chats': (context) => const ChatsPage()},
       ),
     );
   }

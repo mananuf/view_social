@@ -73,8 +73,8 @@ impl MessageRepository for PostgresMessageRepository {
 
         let model: MessageModel = sqlx::query_as(
             "INSERT INTO messages (id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at")
+            VALUES ($1, $2, $3, $4::message_type, $5, $6, $7, $8, $9, $10)
+            RETURNING id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at")
             .bind(message.id)
             .bind(message.conversation_id)
             .bind(message.sender_id)
@@ -104,7 +104,7 @@ impl MessageRepository for PostgresMessageRepository {
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Message>> {
         let model: Option<MessageModel> = sqlx::query_as(
-            "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages WHERE id = $1")
+            "SELECT id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages WHERE id = $1")
             .bind(id)
             .fetch_optional(&self.pool)
             .await
@@ -133,9 +133,9 @@ impl MessageRepository for PostgresMessageRepository {
 
         let model: MessageModel = sqlx::query_as(
             "UPDATE messages
-            SET message_type = $2, content = $3, media_url = $4, payment_data = $5, reply_to_id = $6, updated_at = $7
+            SET message_type = $2::message_type, content = $3, media_url = $4, payment_data = $5, reply_to_id = $6, updated_at = $7
             WHERE id = $1
-            RETURNING id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at")
+            RETURNING id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at")
             .bind(message.id)
             .bind(message_type_str)
             .bind(&message.content)
@@ -177,7 +177,7 @@ impl MessageRepository for PostgresMessageRepository {
 
             if let Some(before_row) = before_row {
                 sqlx::query_as(
-                    "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+                    "SELECT id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
                     WHERE conversation_id = $1 AND created_at < $2
                     ORDER BY created_at DESC
                     LIMIT $3")
@@ -192,7 +192,7 @@ impl MessageRepository for PostgresMessageRepository {
             }
         } else {
             sqlx::query_as(
-                "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+                "SELECT id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
                 WHERE conversation_id = $1
                 ORDER BY created_at DESC
                 LIMIT $2")
@@ -305,8 +305,8 @@ impl MessageRepository for PostgresMessageRepository {
         offset: i64,
     ) -> Result<Vec<Message>> {
         let models: Vec<MessageModel> = sqlx::query_as(
-            "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
-            WHERE conversation_id = $1 AND message_type = $2
+            "SELECT id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+            WHERE conversation_id = $1 AND message_type = $2::message_type
             ORDER BY created_at DESC
             LIMIT $3 OFFSET $4")
             .bind(conversation_id)
@@ -322,7 +322,7 @@ impl MessageRepository for PostgresMessageRepository {
 
     async fn find_latest_in_conversation(&self, conversation_id: Uuid) -> Result<Option<Message>> {
         let model: Option<MessageModel> = sqlx::query_as(
-            "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+            "SELECT id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
             WHERE conversation_id = $1
             ORDER BY created_at DESC
             LIMIT 1")
@@ -342,7 +342,7 @@ impl MessageRepository for PostgresMessageRepository {
         offset: i64,
     ) -> Result<Vec<Message>> {
         let models: Vec<MessageModel> = sqlx::query_as(
-            "SELECT id, conversation_id, sender_id, message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
+            "SELECT id, conversation_id, sender_id, message_type::text as message_type, content, media_url, payment_data, reply_to_id, created_at FROM messages
             WHERE conversation_id = $1 AND content ILIKE $2
             ORDER BY created_at DESC
             LIMIT $3 OFFSET $4")

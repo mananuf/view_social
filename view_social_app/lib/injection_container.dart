@@ -9,6 +9,7 @@ import 'features/auth/domain/usecases/login_usecase.dart';
 import 'features/auth/domain/usecases/logout_usecase.dart';
 import 'features/auth/domain/usecases/resend_verification_usecase.dart';
 import 'features/auth/presentation/bloc/auth_bloc.dart';
+import 'features/messaging/data/datasources/messaging_remote_datasource.dart';
 
 final sl = GetIt.instance;
 
@@ -37,6 +38,10 @@ Future<void> init() async {
   // Data sources
   sl.registerLazySingleton<AuthRemoteDataSource>(
     () => AuthRemoteDataSourceImpl(sl()),
+  );
+
+  sl.registerLazySingleton<MessagingRemoteDataSource>(
+    () => MessagingRemoteDataSourceImpl(apiClient: sl()),
   );
 
   // Core

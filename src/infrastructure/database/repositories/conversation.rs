@@ -36,7 +36,7 @@ impl ConversationRepository for PostgresConversationRepository {
 
         sqlx::query(
             "INSERT INTO conversations (id, conversation_type, title, created_by, created_at, updated_at, last_message_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)")
+            VALUES ($1, $2::conversation_type, $3, $4, $5, $6, $7)")
             .bind(conversation_id)
             .bind(conversation_type)
             .bind(group_name)
@@ -73,7 +73,7 @@ impl ConversationRepository for PostgresConversationRepository {
         id: Uuid,
     ) -> Result<Option<(Uuid, Vec<Uuid>, bool, Option<String>, DateTime<Utc>)>> {
         let model: Option<ConversationModel> = sqlx::query_as(
-            "SELECT id, conversation_type, title, created_at FROM conversations WHERE id = $1",
+            "SELECT id, conversation_type::text as conversation_type, title, created_at FROM conversations WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -111,7 +111,7 @@ impl ConversationRepository for PostgresConversationRepository {
         offset: i64,
     ) -> Result<Vec<(Uuid, Vec<Uuid>, bool, Option<String>, DateTime<Utc>)>> {
         let models: Vec<ConversationModel> = sqlx::query_as(
-            "SELECT DISTINCT c.id, c.conversation_type, c.title, c.created_at
+            "SELECT DISTINCT c.id, c.conversation_type::text as conversation_type, c.title, c.created_at, c.last_message_at
             FROM conversations c
             INNER JOIN conversation_participants cp ON c.id = cp.conversation_id
             WHERE cp.user_id = $1 AND cp.left_at IS NULL

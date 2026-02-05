@@ -5,6 +5,7 @@ pub mod messages;
 pub mod notifications;
 pub mod payments;
 pub mod posts;
+pub mod users;
 pub mod websocket;
 
 use crate::server::AppState;
@@ -17,6 +18,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/auth", auth::create_router(state.clone()))
         .merge(posts::create_router(state.clone()))
         .merge(messages::create_router(state.clone()))
+        .merge(users::create_router(state.clone()))
         .merge(payments::create_router(state.clone()))
         .nest(
             "/notifications",

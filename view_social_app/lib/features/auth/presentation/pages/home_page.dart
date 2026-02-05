@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/design_tokens.dart';
 import '../../../../shared/widgets/custom_button.dart';
+import '../../../../injection_container.dart';
 import '../../../messaging/presentation/pages/chats_page.dart';
+import '../../../messaging/data/datasources/messaging_remote_datasource.dart';
 import '../bloc/auth_bloc.dart';
 import 'welcome_page.dart';
 
@@ -419,7 +421,48 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildMessagesPage() {
-    return const ChatsPage();
+    // Get current user ID from AuthBloc state
+    final authState = context.read<AuthBloc>().state;
+    String? currentUserId;
+
+    if (authState is AuthSuccess) {
+      currentUserId = authState.user.id;
+    }
+
+    // If no user ID, show error
+    if (currentUserId == null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 64, color: AppTheme.errorColor),
+            const SizedBox(height: DesignTokens.spaceLg),
+            Text(
+              'Unable to load messages',
+              style: DesignTokens.getHeadingStyle(
+                context,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: DesignTokens.spaceSm),
+            Text(
+              'Please log in again',
+              style: DesignTokens.getBodyStyle(
+                context,
+                fontSize: 14,
+                color: AppTheme.lightTextSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ChatsPage(
+      messagingDataSource: sl<MessagingRemoteDataSource>(),
+      currentUserId: currentUserId,
+    );
   }
 
   Widget _buildPaymentsPage() {
