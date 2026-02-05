@@ -5,6 +5,7 @@ import '../../core/theme/design_tokens.dart';
 import '../../core/theme/app_theme.dart';
 
 enum TextFieldSize { small, medium, large }
+
 enum TextFieldVariant { outlined, filled, underlined }
 
 class CustomTextField extends StatefulWidget {
@@ -38,7 +39,7 @@ class CustomTextField extends StatefulWidget {
   final BorderRadius? borderRadius;
   final bool showCharacterCount;
   final TextCapitalization textCapitalization;
-  
+
   const CustomTextField({
     super.key,
     this.label,
@@ -72,7 +73,7 @@ class CustomTextField extends StatefulWidget {
     this.showCharacterCount = false,
     this.textCapitalization = TextCapitalization.none,
   });
-  
+
   @override
   State<CustomTextField> createState() => _CustomTextFieldState();
 }
@@ -81,7 +82,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
   late bool _obscureText;
   late FocusNode _focusNode;
   bool _isFocused = false;
-  
+
   @override
   void initState() {
     super.initState();
@@ -89,7 +90,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
     _focusNode = widget.focusNode ?? FocusNode();
     _focusNode.addListener(_onFocusChange);
   }
-  
+
   @override
   void dispose() {
     if (widget.focusNode == null) {
@@ -99,27 +100,31 @@ class _CustomTextFieldState extends State<CustomTextField> {
     }
     super.dispose();
   }
-  
+
   void _onFocusChange() {
     setState(() {
       _isFocused = _focusNode.hasFocus;
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     Widget? suffixIcon = widget.suffixIcon;
-    
-    // Add password visibility toggle for password fields
+
+    // Add password visibility toggle for password fields ONLY if no suffixIcon is provided
     if (widget.obscureText && suffixIcon == null) {
       suffixIcon = IconButton(
         icon: Icon(
-          _obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-          color: _isFocused 
-              ? theme.colorScheme.primary 
-              : theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityMedium),
+          _obscureText
+              ? Icons.visibility_outlined
+              : Icons.visibility_off_outlined,
+          color: _isFocused
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurface.withValues(
+                  alpha: DesignTokens.opacityMedium,
+                ),
           size: _getIconSize(),
         ),
         onPressed: () {
@@ -130,7 +135,12 @@ class _CustomTextFieldState extends State<CustomTextField> {
         splashRadius: 20,
       );
     }
-    
+
+    // Use widget.obscureText when suffixIcon is provided (external control)
+    final bool shouldObscure = widget.suffixIcon != null
+        ? widget.obscureText
+        : _obscureText;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -141,9 +151,11 @@ class _CustomTextFieldState extends State<CustomTextField> {
               context,
               fontSize: _getLabelFontSize(context),
               fontWeight: FontWeight.w600,
-              color: _isFocused 
-                  ? theme.colorScheme.primary 
-                  : theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityHigh),
+              color: _isFocused
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface.withValues(
+                      alpha: DesignTokens.opacityHigh,
+                    ),
             ),
           ),
           SizedBox(height: DesignTokens.spaceSm),
@@ -157,7 +169,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
           onTap: widget.onTap,
           keyboardType: widget.keyboardType,
           textInputAction: widget.textInputAction,
-          obscureText: _obscureText,
+          obscureText: shouldObscure,
           enabled: widget.enabled,
           readOnly: widget.readOnly,
           maxLines: widget.maxLines,
@@ -170,13 +182,16 @@ class _CustomTextFieldState extends State<CustomTextField> {
           style: DesignTokens.getBodyStyle(
             context,
             fontSize: _getTextFontSize(context),
-            color: widget.enabled 
-                ? theme.colorScheme.onSurface 
-                : theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityDisabled),
+            color: widget.enabled
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.onSurface.withValues(
+                    alpha: DesignTokens.opacityDisabled,
+                  ),
           ),
           decoration: _buildInputDecoration(context, theme, suffixIcon),
         ),
-        if (widget.helperText != null || (widget.showCharacterCount && widget.maxLength != null)) ...[
+        if (widget.helperText != null ||
+            (widget.showCharacterCount && widget.maxLength != null)) ...[
           SizedBox(height: DesignTokens.spaceXs),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -188,7 +203,9 @@ class _CustomTextFieldState extends State<CustomTextField> {
                     style: DesignTokens.getCaptionStyle(
                       context,
                       fontSize: 12,
-                      color: theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityMedium),
+                      color: theme.colorScheme.onSurface.withValues(
+                        alpha: DesignTokens.opacityMedium,
+                      ),
                     ),
                   ),
                 ),
@@ -198,7 +215,9 @@ class _CustomTextFieldState extends State<CustomTextField> {
                   style: DesignTokens.getCaptionStyle(
                     context,
                     fontSize: 12,
-                    color: theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityMedium),
+                    color: theme.colorScheme.onSurface.withValues(
+                      alpha: DesignTokens.opacityMedium,
+                    ),
                   ),
                 ),
             ],
@@ -207,11 +226,15 @@ class _CustomTextFieldState extends State<CustomTextField> {
       ],
     );
   }
-  
-  InputDecoration _buildInputDecoration(BuildContext context, ThemeData theme, Widget? suffixIcon) {
+
+  InputDecoration _buildInputDecoration(
+    BuildContext context,
+    ThemeData theme,
+    Widget? suffixIcon,
+  ) {
     final borderRadius = widget.borderRadius ?? _getBorderRadius();
     final fillColor = widget.fillColor ?? _getFillColor(theme);
-    
+
     switch (widget.variant) {
       case TextFieldVariant.outlined:
         return InputDecoration(
@@ -219,13 +242,15 @@ class _CustomTextFieldState extends State<CustomTextField> {
           hintStyle: DesignTokens.getBodyStyle(
             context,
             fontSize: _getTextFontSize(context),
-            color: theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityMedium),
+            color: theme.colorScheme.onSurface.withValues(
+              alpha: DesignTokens.opacityMedium,
+            ),
           ),
-          prefixIcon: widget.prefixIcon != null 
-              ? _buildIconContainer(widget.prefixIcon!) 
+          prefixIcon: widget.prefixIcon != null
+              ? _buildIconContainer(widget.prefixIcon!)
               : null,
-          suffixIcon: suffixIcon != null 
-              ? _buildIconContainer(suffixIcon) 
+          suffixIcon: suffixIcon != null
+              ? _buildIconContainer(suffixIcon)
               : null,
           prefixText: widget.prefixText,
           suffixText: widget.suffixText,
@@ -247,24 +272,15 @@ class _CustomTextFieldState extends State<CustomTextField> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: borderRadius,
-            borderSide: BorderSide(
-              color: theme.colorScheme.primary,
-              width: 2,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: borderRadius,
-            borderSide: BorderSide(
-              color: theme.colorScheme.error,
-              width: 1,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.error, width: 1),
           ),
           focusedErrorBorder: OutlineInputBorder(
             borderRadius: borderRadius,
-            borderSide: BorderSide(
-              color: theme.colorScheme.error,
-              width: 2,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
           ),
           disabledBorder: OutlineInputBorder(
             borderRadius: borderRadius,
@@ -276,20 +292,22 @@ class _CustomTextFieldState extends State<CustomTextField> {
           contentPadding: _getContentPadding(context),
           counterText: widget.showCharacterCount ? null : '',
         );
-        
+
       case TextFieldVariant.filled:
         return InputDecoration(
           hintText: widget.hint,
           hintStyle: DesignTokens.getBodyStyle(
             context,
             fontSize: _getTextFontSize(context),
-            color: theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityMedium),
+            color: theme.colorScheme.onSurface.withValues(
+              alpha: DesignTokens.opacityMedium,
+            ),
           ),
-          prefixIcon: widget.prefixIcon != null 
-              ? _buildIconContainer(widget.prefixIcon!) 
+          prefixIcon: widget.prefixIcon != null
+              ? _buildIconContainer(widget.prefixIcon!)
               : null,
-          suffixIcon: suffixIcon != null 
-              ? _buildIconContainer(suffixIcon) 
+          suffixIcon: suffixIcon != null
+              ? _buildIconContainer(suffixIcon)
               : null,
           prefixText: widget.prefixText,
           suffixText: widget.suffixText,
@@ -305,36 +323,29 @@ class _CustomTextFieldState extends State<CustomTextField> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: borderRadius,
-            borderSide: BorderSide(
-              color: theme.colorScheme.primary,
-              width: 2,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: borderRadius,
-            borderSide: BorderSide(
-              color: theme.colorScheme.error,
-              width: 1,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.error, width: 1),
           ),
           focusedErrorBorder: OutlineInputBorder(
             borderRadius: borderRadius,
-            borderSide: BorderSide(
-              color: theme.colorScheme.error,
-              width: 2,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
           ),
           contentPadding: _getContentPadding(context),
           counterText: widget.showCharacterCount ? null : '',
         );
-        
+
       case TextFieldVariant.underlined:
         return InputDecoration(
           hintText: widget.hint,
           hintStyle: DesignTokens.getBodyStyle(
             context,
             fontSize: _getTextFontSize(context),
-            color: theme.colorScheme.onSurface.withValues(alpha: DesignTokens.opacityMedium),
+            color: theme.colorScheme.onSurface.withValues(
+              alpha: DesignTokens.opacityMedium,
+            ),
           ),
           prefixIcon: widget.prefixIcon,
           suffixIcon: suffixIcon,
@@ -352,35 +363,27 @@ class _CustomTextFieldState extends State<CustomTextField> {
             ),
           ),
           focusedBorder: UnderlineInputBorder(
-            borderSide: BorderSide(
-              color: theme.colorScheme.primary,
-              width: 2,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
           ),
           errorBorder: UnderlineInputBorder(
-            borderSide: BorderSide(
-              color: theme.colorScheme.error,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.error),
           ),
           focusedErrorBorder: UnderlineInputBorder(
-            borderSide: BorderSide(
-              color: theme.colorScheme.error,
-              width: 2,
-            ),
+            borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
           ),
           contentPadding: _getContentPadding(context),
           counterText: widget.showCharacterCount ? null : '',
         );
     }
   }
-  
+
   Widget _buildIconContainer(Widget icon) {
     return Container(
       padding: EdgeInsets.all(DesignTokens.spaceSm),
       child: icon,
     );
   }
-  
+
   BorderRadius _getBorderRadius() {
     return switch (widget.size) {
       TextFieldSize.small => DesignTokens.borderRadiusMd,
@@ -388,17 +391,17 @@ class _CustomTextFieldState extends State<CustomTextField> {
       TextFieldSize.large => DesignTokens.borderRadiusXl,
     };
   }
-  
+
   Color _getFillColor(ThemeData theme) {
     if (widget.variant == TextFieldVariant.underlined) {
       return Colors.transparent;
     }
-    
+
     return theme.brightness == Brightness.light
         ? AppTheme.lightSurfaceColor
         : AppTheme.darkCardColor;
   }
-  
+
   EdgeInsets _getContentPadding(BuildContext context) {
     return Responsive.responsive<EdgeInsets>(
       context,
@@ -446,27 +449,27 @@ class _CustomTextFieldState extends State<CustomTextField> {
       },
     );
   }
-  
+
   double _getTextFontSize(BuildContext context) {
     final baseFontSize = switch (widget.size) {
       TextFieldSize.small => 14.0,
       TextFieldSize.medium => 16.0,
       TextFieldSize.large => 18.0,
     };
-    
+
     return Responsive.getFontSize(context, baseFontSize);
   }
-  
+
   double _getLabelFontSize(BuildContext context) {
     final baseFontSize = switch (widget.size) {
       TextFieldSize.small => 12.0,
       TextFieldSize.medium => 14.0,
       TextFieldSize.large => 16.0,
     };
-    
+
     return Responsive.getFontSize(context, baseFontSize);
   }
-  
+
   double _getIconSize() {
     return switch (widget.size) {
       TextFieldSize.small => DesignTokens.iconSm,
