@@ -106,334 +106,340 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         children: [
           // Abstract background
           const AbstractBackground(),
-
           // Content with white card
-          SafeArea(
-            child: BlocListener<AuthBloc, AuthState>(
-              listener: (context, state) {
-                if (state is AuthLoading) {
-                  setState(() {
-                    _isLoading = true;
-                  });
-                } else {
-                  setState(() {
-                    _isLoading = false;
-                  });
-                }
+          // Content with white card
+          Stack(
+            children: [
+              SafeArea(
+                child: BlocListener<AuthBloc, AuthState>(
+                  listener: (context, state) {
+                    if (state is AuthLoading) {
+                      setState(() {
+                        _isLoading = true;
+                      });
+                    } else {
+                      setState(() {
+                        _isLoading = false;
+                      });
+                    }
 
-                if (state is AuthSuccess) {
-                  // Navigate to home page on successful login
-                  Navigator.of(context).pushAndRemoveUntil(
-                    PageRouteBuilder(
-                      pageBuilder: (context, animation, secondaryAnimation) =>
-                          const HomePage(),
-                      transitionsBuilder:
-                          (context, animation, secondaryAnimation, child) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: child,
-                            );
-                          },
-                      transitionDuration: DesignTokens.animationNormal,
-                    ),
-                    (route) => false,
-                  );
-                } else if (state is AuthError) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        state.message,
-                        style: DesignTokens.getBodyStyle(
-                          context,
-                          fontSize: 14,
-                          color: AppTheme.white,
+                    if (state is AuthSuccess) {
+                      // Navigate to home page on successful login
+                      Navigator.of(context).pushAndRemoveUntil(
+                        PageRouteBuilder(
+                          pageBuilder:
+                              (context, animation, secondaryAnimation) =>
+                                  const HomePage(),
+                          transitionsBuilder:
+                              (context, animation, secondaryAnimation, child) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: child,
+                                );
+                              },
+                          transitionDuration: DesignTokens.animationNormal,
                         ),
-                      ),
-                      backgroundColor: AppTheme.errorColor,
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: DesignTokens.borderRadiusLg,
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: Column(
-                children: [
-                  // Back button
-                  Padding(
-                    padding: DesignTokens.paddingLg,
-                    child: Row(
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(
-                            Icons.arrow_back_ios,
-                            color: AppTheme.white,
+                        (route) => false,
+                      );
+                    } else if (state is AuthError) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            state.message,
+                            style: DesignTokens.getBodyStyle(
+                              context,
+                              fontSize: 14,
+                              color: AppTheme.white,
+                            ),
+                          ),
+                          backgroundColor: AppTheme.errorColor,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: DesignTokens.borderRadiusLg,
                           ),
                         ),
-                        Text(
-                          'Back',
-                          style: DesignTokens.getBodyStyle(
-                            context,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.white,
-                          ),
+                      );
+                    }
+                  },
+                  child: Column(
+                    children: [
+                      // Back button
+                      Padding(
+                        padding: DesignTokens.paddingLg,
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(
+                                Icons.arrow_back_ios,
+                                color: AppTheme.white,
+                              ),
+                            ),
+                            Text(
+                              'Back',
+                              style: DesignTokens.getBodyStyle(
+                                context,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.white,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      const Spacer(),
+                    ],
                   ),
+                ),
+              ),
 
-                  const Spacer(),
-
-                  // White card with rounded top corners - extends to bottom
-                  SlideTransition(
-                    position: _slideAnimation,
-                    child: Container(
-                      width: double.infinity,
-                      height:
-                          MediaQuery.of(context).size.height *
-                          0.75, // Fixed height to extend to bottom
-                      decoration: BoxDecoration(
-                        color: AppTheme.white,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(32),
-                          topRight: Radius.circular(32),
-                        ),
+              // White card - positioned to extend to actual bottom
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Container(
+                    width: double.infinity,
+                    height: MediaQuery.of(context).size.height * 0.75,
+                    decoration: BoxDecoration(
+                      color: AppTheme.white,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(32),
+                        topRight: Radius.circular(32),
                       ),
-                      child: SingleChildScrollView(
-                        padding: DesignTokens.padding2xl,
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(height: DesignTokens.spaceLg),
+                    ),
+                    child: SingleChildScrollView(
+                      padding: DesignTokens.padding2xl,
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          // ... rest of your form content
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(height: DesignTokens.spaceLg),
 
-                              // Title
-                              Center(
+                            // Title
+                            Center(
+                              child: Text(
+                                'Get Started',
+                                style: DesignTokens.getHeadingStyle(
+                                  context,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+
+                            SizedBox(height: DesignTokens.space4xl),
+
+                            // Email/Phone Field
+                            CustomTextField(
+                              controller: _identifierController,
+                              hint: _isPhoneMode
+                                  ? 'Phone Number'
+                                  : 'Email Address',
+                              keyboardType: _isPhoneMode
+                                  ? TextInputType.phone
+                                  : TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              validator: _isPhoneMode
+                                  ? Validators.validatePhone
+                                  : Validators.validateEmail,
+                              prefixIcon: Icon(
+                                _isPhoneMode
+                                    ? Icons.phone_outlined
+                                    : Icons.email_outlined,
+                                color: AppTheme.lightTextSecondary,
+                                size: DesignTokens.iconMd,
+                              ),
+                              size: TextFieldSize.large,
+                              variant: TextFieldVariant.outlined,
+                            ),
+
+                            SizedBox(height: DesignTokens.spaceLg),
+
+                            // Password Field
+                            CustomTextField(
+                              controller: _passwordController,
+                              hint: 'Password',
+                              obscureText: !_isPasswordVisible,
+                              textInputAction: TextInputAction.done,
+                              validator: Validators.validatePassword,
+                              prefixIcon: Icon(
+                                Icons.lock_outline,
+                                color: AppTheme.lightTextSecondary,
+                                size: DesignTokens.iconMd,
+                              ),
+                              suffixIcon: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _isPasswordVisible = !_isPasswordVisible;
+                                  });
+                                },
+                                icon: Icon(
+                                  _isPasswordVisible
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: AppTheme.lightTextSecondary,
+                                  size: DesignTokens.iconMd,
+                                ),
+                              ),
+                              onSubmitted: (_) => _handleLogin(),
+                              size: TextFieldSize.large,
+                              variant: TextFieldVariant.outlined,
+                            ),
+
+                            SizedBox(height: DesignTokens.spaceLg),
+
+                            // Forgot Password Link
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    PageRouteBuilder(
+                                      pageBuilder:
+                                          (
+                                            context,
+                                            animation,
+                                            secondaryAnimation,
+                                          ) => const ForgotPasswordPage(),
+                                      transitionsBuilder:
+                                          (
+                                            context,
+                                            animation,
+                                            secondaryAnimation,
+                                            child,
+                                          ) {
+                                            return SlideTransition(
+                                              position: Tween<Offset>(
+                                                begin: const Offset(1.0, 0.0),
+                                                end: Offset.zero,
+                                              ).animate(animation),
+                                              child: child,
+                                            );
+                                          },
+                                      transitionDuration:
+                                          DesignTokens.animationNormal,
+                                    ),
+                                  );
+                                },
                                 child: Text(
-                                  'Get Started',
-                                  style: DesignTokens.getHeadingStyle(
+                                  'Forgot password?',
+                                  style: DesignTokens.getBodyStyle(
                                     context,
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
                                     color: AppTheme.primaryColor,
                                   ),
                                 ),
                               ),
+                            ),
 
-                              SizedBox(height: DesignTokens.space4xl),
+                            SizedBox(height: DesignTokens.space4xl),
 
-                              // Email/Phone Field
-                              CustomTextField(
-                                controller: _identifierController,
-                                hint: _isPhoneMode
-                                    ? 'Phone Number'
-                                    : 'Email Address',
-                                keyboardType: _isPhoneMode
-                                    ? TextInputType.phone
-                                    : TextInputType.emailAddress,
-                                textInputAction: TextInputAction.next,
-                                validator: _isPhoneMode
-                                    ? Validators.validatePhone
-                                    : Validators.validateEmail,
-                                prefixIcon: Icon(
-                                  _isPhoneMode
-                                      ? Icons.phone_outlined
-                                      : Icons.email_outlined,
+                            // Login Button
+                            CustomButton(
+                              text: 'Sign in',
+                              onPressed: _handleLogin,
+                              isLoading: _isLoading,
+                              fullWidth: true,
+                              size: ButtonSize.large,
+                              useGradient: true,
+                            ),
+
+                            SizedBox(height: DesignTokens.space4xl),
+
+                            // Sign up with text
+                            Center(
+                              child: Text(
+                                'Sign in with',
+                                style: DesignTokens.getBodyStyle(
+                                  context,
+                                  fontSize: 14,
                                   color: AppTheme.lightTextSecondary,
-                                  size: DesignTokens.iconMd,
                                 ),
-                                size: TextFieldSize.large,
-                                variant: TextFieldVariant.outlined,
                               ),
+                            ),
 
-                              SizedBox(height: DesignTokens.spaceLg),
+                            SizedBox(height: DesignTokens.spaceLg),
 
-                              // Password Field
-                              CustomTextField(
-                                controller: _passwordController,
-                                hint: 'Password',
-                                obscureText: !_isPasswordVisible,
-                                textInputAction: TextInputAction.done,
-                                validator: Validators.validatePassword,
-                                prefixIcon: Icon(
-                                  Icons.lock_outline,
-                                  color: AppTheme.lightTextSecondary,
-                                  size: DesignTokens.iconMd,
-                                ),
-                                suffixIcon: IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _isPasswordVisible = !_isPasswordVisible;
-                                    });
-                                  },
-                                  icon: Icon(
-                                    _isPasswordVisible
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                    color: AppTheme.lightTextSecondary,
-                                    size: DesignTokens.iconMd,
-                                  ),
-                                ),
-                                onSubmitted: (_) => _handleLogin(),
-                                size: TextFieldSize.large,
-                                variant: TextFieldVariant.outlined,
-                              ),
-
-                              SizedBox(height: DesignTokens.spaceLg),
-
-                              // Forgot Password Link
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: GestureDetector(
+                            // Social Login Icons
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // Google Icon
+                                _buildSocialButton(
+                                  icon: Icons.g_mobiledata,
                                   onTap: () {
-                                    Navigator.of(context).push(
-                                      PageRouteBuilder(
-                                        pageBuilder:
-                                            (
-                                              context,
-                                              animation,
-                                              secondaryAnimation,
-                                            ) => const ForgotPasswordPage(),
-                                        transitionsBuilder:
-                                            (
-                                              context,
-                                              animation,
-                                              secondaryAnimation,
-                                              child,
-                                            ) {
-                                              return SlideTransition(
-                                                position: Tween<Offset>(
-                                                  begin: const Offset(1.0, 0.0),
-                                                  end: Offset.zero,
-                                                ).animate(animation),
-                                                child: child,
-                                              );
-                                            },
-                                        transitionDuration:
-                                            DesignTokens.animationNormal,
-                                      ),
-                                    );
+                                    // TODO: Implement Google login
                                   },
-                                  child: Text(
-                                    'Forgot password?',
+                                ),
+
+                                SizedBox(width: DesignTokens.space2xl),
+
+                                // Apple Icon
+                                _buildSocialButton(
+                                  icon: Icons.apple,
+                                  onTap: () {
+                                    // TODO: Implement Apple login
+                                  },
+                                ),
+
+                                SizedBox(width: DesignTokens.space2xl),
+
+                                // Phone/Email Toggle Icon
+                                _buildSocialButton(
+                                  icon: _isPhoneMode
+                                      ? Icons.email_outlined
+                                      : Icons.phone_outlined,
+                                  onTap: _toggleInputMode,
+                                  isActive: true,
+                                ),
+                              ],
+                            ),
+
+                            SizedBox(height: DesignTokens.space4xl),
+
+                            // Register Link
+                            Center(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    'Already have an account? ',
                                     style: DesignTokens.getBodyStyle(
                                       context,
                                       fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.primaryColor,
+                                      color: AppTheme.lightTextSecondary,
                                     ),
                                   ),
-                                ),
-                              ),
-
-                              SizedBox(height: DesignTokens.space4xl),
-
-                              // Login Button
-                              CustomButton(
-                                text: 'Sign in',
-                                onPressed: _handleLogin,
-                                isLoading: _isLoading,
-                                fullWidth: true,
-                                size: ButtonSize.large,
-                                useGradient: true,
-                              ),
-
-                              SizedBox(height: DesignTokens.space4xl),
-
-                              // Sign up with text
-                              Center(
-                                child: Text(
-                                  'Sign in with',
-                                  style: DesignTokens.getBodyStyle(
-                                    context,
-                                    fontSize: 14,
-                                    color: AppTheme.lightTextSecondary,
-                                  ),
-                                ),
-                              ),
-
-                              SizedBox(height: DesignTokens.spaceLg),
-
-                              // Social Login Icons
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  // Google Icon
-                                  _buildSocialButton(
-                                    icon: Icons.g_mobiledata,
-                                    onTap: () {
-                                      // TODO: Implement Google login
-                                    },
-                                  ),
-
-                                  SizedBox(width: DesignTokens.space2xl),
-
-                                  // Apple Icon
-                                  _buildSocialButton(
-                                    icon: Icons.apple,
-                                    onTap: () {
-                                      // TODO: Implement Apple login
-                                    },
-                                  ),
-
-                                  SizedBox(width: DesignTokens.space2xl),
-
-                                  // Phone/Email Toggle Icon
-                                  _buildSocialButton(
-                                    icon: _isPhoneMode
-                                        ? Icons.email_outlined
-                                        : Icons.phone_outlined,
-                                    onTap: _toggleInputMode,
-                                    isActive: true,
-                                  ),
-                                ],
-                              ),
-
-                              SizedBox(height: DesignTokens.space4xl),
-
-                              // Register Link
-                              Center(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      'Already have an account? ',
+                                  GestureDetector(
+                                    onTap: _navigateToRegister,
+                                    child: Text(
+                                      'Sign up',
                                       style: DesignTokens.getBodyStyle(
                                         context,
                                         fontSize: 14,
-                                        color: AppTheme.lightTextSecondary,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.primaryColor,
                                       ),
                                     ),
-                                    GestureDetector(
-                                      onTap: _navigateToRegister,
-                                      child: Text(
-                                        'Sign up',
-                                        style: DesignTokens.getBodyStyle(
-                                          context,
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.primaryColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
+                            ),
 
-                              SizedBox(height: DesignTokens.space2xl),
-                            ],
-                          ),
+                            SizedBox(height: DesignTokens.space2xl),
+                          ],
                         ),
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
