@@ -90,6 +90,23 @@ class Validators {
     return null;
   }
 
+  static String? validatePhone(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Phone number is required';
+    }
+
+    // Remove any spaces, dashes, or parentheses
+    final cleanPhone = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+
+    // Check for Nigerian phone number format
+    final nigerianPhoneRegex = RegExp(r'^(\+234|234|0)?[789][01]\d{8}$');
+    if (!nigerianPhoneRegex.hasMatch(cleanPhone)) {
+      return 'Please enter a valid Nigerian phone number';
+    }
+
+    return null;
+  }
+
   static String? validateAmount(String? value) {
     if (value == null || value.isEmpty) {
       return 'Amount is required';
