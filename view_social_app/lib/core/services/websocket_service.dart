@@ -168,16 +168,20 @@ class WebSocketService {
       final json = jsonDecode(message as String) as Map<String, dynamic>;
       final event = WebSocketEvent.fromJson(json);
 
+      print('📨 WebSocket event received: ${event.type}');
+
       // Handle specific event types
       switch (event.type) {
         case WebSocketEventType.userOnline:
           final userId = event.data['user_id'] as String;
+          print('✅ User $userId is now ONLINE');
           _onlineStatus[userId] = true;
           _onlineStatusController.add(Map.from(_onlineStatus));
           break;
 
         case WebSocketEventType.userOffline:
           final userId = event.data['user_id'] as String;
+          print('❌ User $userId is now OFFLINE');
           _onlineStatus[userId] = false;
           _onlineStatusController.add(Map.from(_onlineStatus));
           break;
@@ -185,6 +189,7 @@ class WebSocketService {
         case WebSocketEventType.typingStarted:
           final conversationId = event.data['conversation_id'] as String;
           final userId = event.data['user_id'] as String;
+          print('⌨️ User $userId started typing in $conversationId');
           _typingUsers.putIfAbsent(conversationId, () => {}).add(userId);
           _typingController.add(Map.from(_typingUsers));
           break;
@@ -192,24 +197,28 @@ class WebSocketService {
         case WebSocketEventType.typingStopped:
           final conversationId = event.data['conversation_id'] as String;
           final userId = event.data['user_id'] as String;
+          print('⌨️ User $userId stopped typing in $conversationId');
           _typingUsers[conversationId]?.remove(userId);
           _typingController.add(Map.from(_typingUsers));
           break;
 
         case WebSocketEventType.messageSent:
           final messageId = event.data['message_id'] as String;
+          print('📤 Message $messageId sent');
           _messageStatus[messageId] = 'sent';
           _messageStatusController.add(Map.from(_messageStatus));
           break;
 
         case WebSocketEventType.messageDelivered:
           final messageId = event.data['message_id'] as String;
+          print('📬 Message $messageId delivered');
           _messageStatus[messageId] = 'delivered';
           _messageStatusController.add(Map.from(_messageStatus));
           break;
 
         case WebSocketEventType.messageRead:
           final messageId = event.data['message_id'] as String;
+          print('📖 Message $messageId read');
           _messageStatus[messageId] = 'read';
           _messageStatusController.add(Map.from(_messageStatus));
           break;

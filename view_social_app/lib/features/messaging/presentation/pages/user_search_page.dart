@@ -94,6 +94,7 @@ class _UserSearchPageState extends State<UserSearchPage> {
               messagingDataSource: widget.messagingDataSource,
               currentUserId: widget.currentUserId,
               isOnline: false,
+              otherUserId: user.id, // Pass other user ID
             ),
           ),
         );

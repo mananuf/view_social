@@ -52,9 +52,15 @@ class _ChatsPageState extends State<ChatsPage> {
 
   void _listenToWebSocketEvents() {
     _wsSubscription = _wsService.events.listen((event) {
-      if (event.type == WebSocketEventType.messageSent ||
-          event.type == WebSocketEventType.messageRead) {
-        // Reload conversations when new message arrives or message is read
+      print('📨 ChatsPage received event: ${event.type}');
+
+      if (event.type == WebSocketEventType.messageSent) {
+        // Reload conversations when new message arrives
+        print('📬 New message received, reloading conversations');
+        _loadConversations();
+      } else if (event.type == WebSocketEventType.messageRead) {
+        // Reload conversations when message is read (to update unread count)
+        print('📖 Message read, reloading conversations');
         _loadConversations();
       }
     });
@@ -86,6 +92,8 @@ class _ChatsPageState extends State<ChatsPage> {
   }
 
   Future<void> _loadConversations() async {
+    print('🔄 Loading conversations...');
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -93,12 +101,21 @@ class _ChatsPageState extends State<ChatsPage> {
 
     try {
       final conversations = await widget.messagingDataSource.getConversations();
+
+      print('✅ Loaded ${conversations.length} conversations');
+      for (final conv in conversations) {
+        print(
+          '   - ${conv.getDisplayName(widget.currentUserId)}: ${conv.unreadCount} unread',
+        );
+      }
+
       setState(() {
         _conversations = conversations;
         _filteredConversations = conversations;
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ Error loading conversations: $e');
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
@@ -284,6 +301,13 @@ class _ChatsPageState extends State<ChatsPage> {
                           isOnline: isOnline,
                           isTyping: isTyping,
                           onTap: () async {
+                            print(
+                              '🚀 Opening chat: $displayName (${conversation.id})',
+                            );
+                            print(
+                              '   Current unread count: ${conversation.unreadCount}',
+                            );
+
                             await Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -294,11 +318,21 @@ class _ChatsPageState extends State<ChatsPage> {
                                       widget.messagingDataSource,
                                   currentUserId: widget.currentUserId,
                                   isOnline: isOnline,
+                                  otherUserId:
+                                      otherUserId, // Pass other user ID
                                 ),
                               ),
                             );
+
+                            print(
+                              '🔙 Returned from chat, reloading conversations...',
+                            );
+                            // Small delay to allow backend to process read receipts
+                            await Future.delayed(
+                              const Duration(milliseconds: 300),
+                            );
                             // Reload conversations to update unread count
-                            _loadConversations();
+                            await _loadConversations();
                           },
                           onLongPress: () {},
                           onDelete: () {},

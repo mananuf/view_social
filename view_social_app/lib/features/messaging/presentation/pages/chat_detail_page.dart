@@ -17,6 +17,7 @@ class ChatDetailPage extends StatefulWidget {
   final bool isOnline;
   final MessagingRemoteDataSource messagingDataSource;
   final String currentUserId;
+  final String? otherUserId; // Add other user ID parameter
 
   const ChatDetailPage({
     super.key,
@@ -26,6 +27,7 @@ class ChatDetailPage extends StatefulWidget {
     required this.currentUserId,
     this.avatarUrl,
     this.isOnline = false,
+    this.otherUserId, // Add to constructor
   });
 
   @override
@@ -56,11 +58,18 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     _scrollController.addListener(_scrollListener);
     _messageController.addListener(_onTextChanged);
     _wsService = sl<WebSocketService>();
-    _loadMessages();
+
+    // Set other user ID from parameter or extract from messages later
+    _otherUserId = widget.otherUserId;
+
+    // Load messages first, then mark as read
+    _loadMessages().then((_) {
+      _markMessagesAsRead();
+    });
+
     _listenToWebSocketEvents();
     _listenToTypingIndicators();
     _listenToOnlineStatus();
-    _markMessagesAsRead();
   }
 
   Future<void> _loadMessages() async {
@@ -80,8 +89,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         _isLoading = false;
       });
 
-      // Extract other user ID from first message or conversation
-      if (_messages.isNotEmpty) {
+      // Extract other user ID from first message if not already set
+      if (_otherUserId == null && _messages.isNotEmpty) {
         final firstMessage = _messages.first;
         if (firstMessage.sender?.id != widget.currentUserId) {
           _otherUserId = firstMessage.sender?.id;
@@ -142,9 +151,18 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     _onlineStatusSubscription = _wsService.onlineStatus.listen((statusMap) {
       // Check if the specific other user is online
       if (_otherUserId != null) {
-        setState(() {
-          _isUserOnline = statusMap[_otherUserId] ?? false;
-        });
+        final wasOnline = _isUserOnline;
+        final isNowOnline = statusMap[_otherUserId] ?? false;
+
+        // Debug logging
+        print('📡 Online status update for user $_otherUserId: $isNowOnline');
+        print('📡 Full status map: $statusMap');
+
+        if (wasOnline != isNowOnline) {
+          setState(() {
+            _isUserOnline = isNowOnline;
+          });
+        }
       }
     });
   }
@@ -152,18 +170,37 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   Future<void> _markMessagesAsRead() async {
     // Mark all unread messages as read when opening the conversation
     try {
-      final unreadMessages = _messages.where(
-        (m) => !m.isRead && m.sender?.id != widget.currentUserId,
-      );
+      print('📖 Total messages in chat: ${_messages.length}');
+      print('📖 Current user ID: ${widget.currentUserId}');
 
+      // Debug: Print all messages with their read status
+      for (final msg in _messages) {
+        print(
+          '   Message ${msg.id.substring(0, 8)}: isRead=${msg.isRead}, sender=${msg.sender?.id.substring(0, 8) ?? "null"}',
+        );
+      }
+
+      // Get all unread messages (messages not sent by current user and not read)
+      final unreadMessages = _messages
+          .where((m) => !m.isRead && m.sender?.id != widget.currentUserId)
+          .toList();
+
+      print('📖 Marking ${unreadMessages.length} messages as read');
+
+      // Mark each unread message as read
       for (final message in unreadMessages) {
+        print('   Marking message ${message.id.substring(0, 8)} as read...');
         await widget.messagingDataSource.markMessageAsRead(
           widget.conversationId,
           message.id,
         );
       }
+
+      if (unreadMessages.isNotEmpty) {
+        print('✅ Marked ${unreadMessages.length} messages as read');
+      }
     } catch (e) {
-      print('Error marking messages as read: $e');
+      print('❌ Error marking messages as read: $e');
     }
   }
 
@@ -641,12 +678,17 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                         final isSent =
                             message.sender?.id == widget.currentUserId;
 
+                        // Determine if message is delivered:
+                        // - If sent by current user and other user is online, it's delivered
+                        // - If sent by current user and other user is offline, it's not delivered
+                        final isDelivered = isSent ? _isUserOnline : true;
+
                         return MessageBubble(
                           message: message.content ?? '',
                           time: _formatTime(message.createdAt),
                           isSent: isSent,
                           isRead: message.isRead,
-                          isDelivered: true, // Assume delivered if received
+                          isDelivered: isDelivered,
                         );
                       }
 
@@ -755,10 +797,16 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showOptionsMenu,
-        backgroundColor: theme.colorScheme.primary,
-        child: const Icon(Icons.auto_awesome, color: Colors.white),
+      floatingActionButton: Padding(
+        padding: EdgeInsets.only(
+          bottom:
+              50.0, // Move up by ~1.5x FAB height (56 * 1.5 ≈ 84, using 80 for cleaner spacing)
+        ),
+        child: FloatingActionButton(
+          onPressed: _showOptionsMenu,
+          backgroundColor: theme.colorScheme.primary,
+          child: const Icon(Icons.auto_awesome, color: Colors.white),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );

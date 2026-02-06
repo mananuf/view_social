@@ -100,13 +100,17 @@ class MessageBubble extends StatelessWidget {
                   children: [
                     if (isSent) ...[
                       Icon(
+                        // Single tick: sent but not delivered (receiver offline)
+                        // Double tick: delivered (receiver online)
                         isDelivered ? Icons.done_all : Icons.done,
                         size: 14,
                         color: isRead
                             ? const Color(0xFF6A0DAD) // Purple for read
                             : (isDark
                                   ? const Color(0xFF9CA3AF)
-                                  : const Color(0xFF6B7280)),
+                                  : const Color(
+                                      0xFF6B7280,
+                                    )), // Gray for delivered but not read
                       ),
                       const SizedBox(width: 4),
                     ],
