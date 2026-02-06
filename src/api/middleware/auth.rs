@@ -22,24 +22,32 @@ pub async fn auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, AuthError> {
-    // Extract authorization header
-    let auth_header = request
+    // Try to extract token from Authorization header first
+    let token = if let Some(auth_header) = request
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
-        .ok_or(AuthError::MissingToken)?;
+    {
+        // Check for Bearer token format
+        if !auth_header.starts_with("Bearer ") {
+            return Err(AuthError::InvalidTokenFormat);
+        }
+        Some(auth_header[7..].to_string()) // Remove "Bearer " prefix
+    } else {
+        // For WebSocket connections, try to extract token from query parameter
+        request.uri().query().and_then(|q| {
+            q.split('&')
+                .find(|param| param.starts_with("token="))
+                .map(|param| param[6..].to_string())
+        })
+    };
 
-    // Check for Bearer token format
-    if !auth_header.starts_with("Bearer ") {
-        return Err(AuthError::InvalidTokenFormat);
-    }
-
-    let token = &auth_header[7..]; // Remove "Bearer " prefix
+    let token = token.ok_or(AuthError::MissingToken)?;
 
     // Validate token and extract user ID
     let user_id = auth_state
         .jwt_service
-        .validate_access_token(token)
+        .validate_access_token(&token)
         .map_err(|_| AuthError::InvalidToken)?;
 
     // Insert authenticated user into request extensions

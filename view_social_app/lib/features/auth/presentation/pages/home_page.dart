@@ -4,6 +4,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/design_tokens.dart';
 import '../../../../shared/widgets/custom_button.dart';
 import '../../../../injection_container.dart';
+import '../../../../core/services/websocket_service.dart';
 import '../../../messaging/presentation/pages/chats_page.dart';
 import '../../../messaging/data/datasources/messaging_remote_datasource.dart';
 import '../bloc/auth_bloc.dart';
@@ -20,11 +21,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   int _currentIndex = 0;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  late WebSocketService _wsService;
 
   @override
   void initState() {
     super.initState();
     _setupAnimations();
+    _connectWebSocket();
   }
 
   void _setupAnimations() {
@@ -43,9 +46,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     _fadeController.forward();
   }
 
+  void _connectWebSocket() {
+    _wsService = sl<WebSocketService>();
+    _wsService.connect();
+  }
+
   @override
   void dispose() {
     _fadeController.dispose();
+    _wsService.disconnect();
     super.dispose();
   }
 

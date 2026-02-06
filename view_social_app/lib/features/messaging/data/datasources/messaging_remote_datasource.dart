@@ -22,6 +22,8 @@ abstract class MessagingRemoteDataSource {
     String content, {
     String messageType = 'text',
   });
+  Future<void> markMessageAsRead(String conversationId, String messageId);
+  Future<void> sendTypingIndicator(String conversationId, bool isTyping);
 }
 
 class MessagingRemoteDataSourceImpl implements MessagingRemoteDataSource {
@@ -200,6 +202,61 @@ class MessagingRemoteDataSourceImpl implements MessagingRemoteDataSource {
         error: e.toString(),
         type: DioExceptionType.unknown,
       );
+    }
+  }
+
+  @override
+  Future<void> markMessageAsRead(
+    String conversationId,
+    String messageId,
+  ) async {
+    try {
+      final response = await apiClient.dio.post(
+        ApiRoutes.conversationRead(conversationId),
+        data: {'message_id': messageId},
+      );
+
+      if (response.statusCode != 200) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
+          error: 'Failed to mark message as read',
+        );
+      }
+    } on DioException {
+      rethrow;
+    } catch (e) {
+      throw DioException(
+        requestOptions: RequestOptions(
+          path: ApiRoutes.conversationRead(conversationId),
+        ),
+        error: e.toString(),
+        type: DioExceptionType.unknown,
+      );
+    }
+  }
+
+  @override
+  Future<void> sendTypingIndicator(String conversationId, bool isTyping) async {
+    try {
+      final response = await apiClient.dio.post(
+        ApiRoutes.conversationTyping(conversationId),
+        data: {'is_typing': isTyping},
+      );
+
+      if (response.statusCode != 200) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
+          error: 'Failed to send typing indicator',
+        );
+      }
+    } on DioException {
+      // Silently fail for typing indicators - not critical
+    } catch (e) {
+      // Silently fail for typing indicators - not critical
     }
   }
 }

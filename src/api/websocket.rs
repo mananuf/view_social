@@ -307,8 +307,11 @@ impl Default for WebSocketState {
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<WebSocketState>,
-    axum::extract::Extension(user_id): axum::extract::Extension<Uuid>,
+    axum::extract::Extension(auth_user): axum::extract::Extension<
+        crate::api::middleware::auth::AuthenticatedUser,
+    >,
 ) -> impl IntoResponse {
+    let user_id = auth_user.user_id;
     ws.on_upgrade(move |socket| handle_socket(socket, state, user_id))
 }
 

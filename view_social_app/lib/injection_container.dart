@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'core/network/api_client.dart';
+import 'core/services/websocket_service.dart';
 import 'features/auth/data/datasources/auth_remote_datasource.dart';
 import 'features/auth/data/repositories/auth_repository_impl.dart';
 import 'features/auth/domain/repositories/auth_repository.dart';
@@ -46,4 +47,5 @@ Future<void> init() async {
 
   // Core
   sl.registerLazySingleton(() => ApiClient());
+  sl.registerLazySingleton(() => WebSocketService());
 }
