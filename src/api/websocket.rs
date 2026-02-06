@@ -95,7 +95,10 @@ impl ConnectionManager {
         user_id: Uuid,
         sender: mpsc::UnboundedSender<WebSocketEvent>,
     ) {
-        let connection = Connection { user_id, sender };
+        let connection = Connection {
+            user_id,
+            sender: sender.clone(),
+        };
 
         let mut connections = self.connections.write().await;
         connections
@@ -108,11 +111,56 @@ impl ConnectionManager {
         let was_offline = !presence.get(&user_id).copied().unwrap_or(false);
         presence.insert(user_id, true);
 
-        // If user was offline, broadcast online status
+        // Get list of currently online users (before broadcasting)
+        let online_users: Vec<Uuid> = presence
+            .iter()
+            .filter_map(|(id, is_online)| {
+                if *is_online && *id != user_id {
+                    Some(*id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        tracing::info!(
+            "User {} connecting. Was offline: {}. Currently online users: {:?}",
+            user_id,
+            was_offline,
+            online_users
+        );
+
+        drop(connections);
+        drop(presence);
+
+        // Send current online users to the newly connected user
+        for online_user_id in online_users {
+            let event = WebSocketEvent::UserOnline {
+                user_id: online_user_id,
+            };
+            tracing::debug!(
+                "Sending online status of user {} to newly connected user {}",
+                online_user_id,
+                user_id
+            );
+            if let Err(e) = sender.send(event) {
+                tracing::error!(
+                    "Failed to send online user {} to newly connected user {}: {}",
+                    online_user_id,
+                    user_id,
+                    e
+                );
+            }
+        }
+
+        // If user was offline, broadcast online status to all OTHER users (not the newly connected one)
         if was_offline {
-            drop(connections);
-            drop(presence);
-            self.broadcast_user_status(user_id, true).await;
+            tracing::debug!(
+                "Broadcasting online status for user {} to other users",
+                user_id
+            );
+            self.broadcast_user_status_except(user_id, true, user_id)
+                .await;
         }
 
         tracing::info!("User {} connected via WebSocket", user_id);
@@ -228,7 +276,53 @@ impl ConnectionManager {
             WebSocketEvent::UserOffline { user_id }
         };
 
+        tracing::debug!(
+            "Broadcasting {} status for user {}",
+            if is_online { "online" } else { "offline" },
+            user_id
+        );
+
         self.broadcast(event).await;
+    }
+
+    /// Broadcast user online/offline status except to a specific user
+    async fn broadcast_user_status_except(
+        &self,
+        user_id: Uuid,
+        is_online: bool,
+        except_user_id: Uuid,
+    ) {
+        let event = if is_online {
+            WebSocketEvent::UserOnline { user_id }
+        } else {
+            WebSocketEvent::UserOffline { user_id }
+        };
+
+        tracing::debug!(
+            "Broadcasting {} status for user {} (except to user {})",
+            if is_online { "online" } else { "offline" },
+            user_id,
+            except_user_id
+        );
+
+        let connections = self.connections.read().await;
+
+        for (conn_user_id, user_connections) in connections.iter() {
+            // Skip the excluded user
+            if *conn_user_id == except_user_id {
+                continue;
+            }
+
+            for connection in user_connections {
+                if let Err(e) = connection.sender.send(event.clone()) {
+                    tracing::error!(
+                        "Failed to broadcast event to user {}: {}",
+                        connection.user_id,
+                        e
+                    );
+                }
+            }
+        }
     }
 
     /// Clean up stale connections (called periodically)

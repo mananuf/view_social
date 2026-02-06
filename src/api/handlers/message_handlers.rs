@@ -95,7 +95,7 @@ pub async fn get_conversations(
             .find_latest_in_conversation(conv_id)
             .await?;
         let last_message_dto = if let Some(msg) = last_message {
-            Some(message_to_dto(&msg, &state).await?)
+            Some(message_to_dto(&msg, &state, auth_user.user_id).await?)
         } else {
             None
         };
@@ -276,7 +276,7 @@ pub async fn get_messages(
     // Convert to DTOs
     let mut message_dtos = Vec::new();
     for message in messages {
-        message_dtos.push(message_to_dto(&message, &state).await?);
+        message_dtos.push(message_to_dto(&message, &state, auth_user.user_id).await?);
     }
 
     let response = PaginatedResponse::new(message_dtos, 0, limit, 0);
@@ -329,7 +329,7 @@ pub async fn send_message(
     let message = Message::new(message_request)?;
     let created_message = state.message_repo.create(&message).await?;
 
-    let message_dto = message_to_dto(&created_message, &state).await?;
+    let message_dto = message_to_dto(&created_message, &state, auth_user.user_id).await?;
 
     // Broadcast message to conversation participants via WebSocket
     let (_, participant_ids, _, _, _) = state
@@ -509,7 +509,11 @@ pub async fn mark_messages_read(
 }
 
 // Helper function to convert Message entity to MessageDTO
-async fn message_to_dto(message: &Message, state: &MessageState) -> Result<MessageDTO, AppError> {
+async fn message_to_dto(
+    message: &Message,
+    state: &MessageState,
+    current_user_id: Uuid,
+) -> Result<MessageDTO, AppError> {
     let message_type = match message.message_type {
         MessageType::Text => "text",
         MessageType::Image => "image",
@@ -536,9 +540,12 @@ async fn message_to_dto(message: &Message, state: &MessageState) -> Result<Messa
         status: pd.status.clone(),
     });
 
-    // For simplicity, we'll assume message is read if it's the sender's own message
-    // In a real implementation, we'd check the message_reads table
-    let is_read = false;
+    // Check if message has been read by the current user
+    let is_read = state
+        .message_repo
+        .is_read_by_user(message.id, current_user_id)
+        .await
+        .unwrap_or(false);
 
     Ok(MessageDTO {
         id: message.id,
