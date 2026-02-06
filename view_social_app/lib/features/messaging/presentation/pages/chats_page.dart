@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../../core/theme/design_tokens.dart';
+import '../../../../core/services/websocket_service.dart';
+import '../../../../injection_container.dart';
 import '../../../../shared/widgets/search_bar_widget.dart';
 import '../../data/datasources/messaging_remote_datasource.dart';
 import '../../data/models/conversation_model.dart';
@@ -28,16 +31,57 @@ class _ChatsPageState extends State<ChatsPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
+  // WebSocket related
+  late WebSocketService _wsService;
+  StreamSubscription? _wsSubscription;
+  StreamSubscription? _onlineStatusSubscription;
+  StreamSubscription? _typingSubscription;
+  Map<String, bool> _onlineStatus = {};
+  Map<String, Set<String>> _typingUsers = {};
+
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_filterConversations);
+    _wsService = sl<WebSocketService>();
     _loadConversations();
+    _listenToWebSocketEvents();
+    _listenToOnlineStatus();
+    _listenToTypingIndicators();
+  }
+
+  void _listenToWebSocketEvents() {
+    _wsSubscription = _wsService.events.listen((event) {
+      if (event.type == WebSocketEventType.messageSent ||
+          event.type == WebSocketEventType.messageRead) {
+        // Reload conversations when new message arrives or message is read
+        _loadConversations();
+      }
+    });
+  }
+
+  void _listenToOnlineStatus() {
+    _onlineStatusSubscription = _wsService.onlineStatus.listen((statusMap) {
+      setState(() {
+        _onlineStatus = statusMap;
+      });
+    });
+  }
+
+  void _listenToTypingIndicators() {
+    _typingSubscription = _wsService.typingIndicators.listen((typingMap) {
+      setState(() {
+        _typingUsers = typingMap;
+      });
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _wsSubscription?.cancel();
+    _onlineStatusSubscription?.cancel();
+    _typingSubscription?.cancel();
     super.dispose();
   }
 
@@ -219,14 +263,28 @@ class _ChatsPageState extends State<ChatsPage> {
                             ? _formatTime(conversation.lastMessage!.createdAt)
                             : _formatTime(conversation.createdAt);
 
+                        // Get other user ID for online status
+                        final otherUserId = conversation.participants
+                            .firstWhere(
+                              (p) => p.id != widget.currentUserId,
+                              orElse: () => conversation.participants.first,
+                            )
+                            .id;
+
+                        final isOnline = _onlineStatus[otherUserId] ?? false;
+                        final isTyping =
+                            _typingUsers[conversation.id]?.isNotEmpty ?? false;
+
                         return ChatTile(
                           name: displayName,
                           lastMessage: lastMessage,
                           time: time,
                           unreadCount: conversation.unreadCount,
-                          hasStatus: false,
-                          onTap: () {
-                            Navigator.push(
+                          hasStatus: isOnline,
+                          isOnline: isOnline,
+                          isTyping: isTyping,
+                          onTap: () async {
+                            await Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => ChatDetailPage(
@@ -235,10 +293,12 @@ class _ChatsPageState extends State<ChatsPage> {
                                   messagingDataSource:
                                       widget.messagingDataSource,
                                   currentUserId: widget.currentUserId,
-                                  isOnline: false,
+                                  isOnline: isOnline,
                                 ),
                               ),
-                            ).then((_) => _loadConversations());
+                            );
+                            // Reload conversations to update unread count
+                            _loadConversations();
                           },
                           onLongPress: () {},
                           onDelete: () {},

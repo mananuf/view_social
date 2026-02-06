@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/design_tokens.dart';
+import '../../../../shared/widgets/typing_indicator.dart';
 
 class ChatTile extends StatelessWidget {
   final String name;
@@ -8,6 +9,8 @@ class ChatTile extends StatelessWidget {
   final String? avatarUrl;
   final int unreadCount;
   final bool hasStatus;
+  final bool isOnline;
+  final bool isTyping;
   final bool isSelected;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
@@ -22,6 +25,8 @@ class ChatTile extends StatelessWidget {
     this.avatarUrl,
     this.unreadCount = 0,
     this.hasStatus = false,
+    this.isOnline = false,
+    this.isTyping = false,
     this.isSelected = false,
     this.onTap,
     this.onLongPress,
@@ -99,8 +104,8 @@ class ChatTile extends StatelessWidget {
       child: Material(
         color: isSelected
             ? (isDark
-                  ? const Color(0xFF6A0DAD).withOpacity(0.2)
-                  : const Color(0xFF6A0DAD).withOpacity(0.1))
+                  ? const Color(0xFF6A0DAD).withValues(alpha: 0.2)
+                  : const Color(0xFF6A0DAD).withValues(alpha: 0.1))
             : (isDark ? const Color(0xFF1A1A1A) : Colors.white),
         child: InkWell(
           onTap: onTap,
@@ -116,7 +121,9 @@ class ChatTile extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 28,
-                      backgroundColor: const Color(0xFF6A0DAD).withOpacity(0.1),
+                      backgroundColor: const Color(
+                        0xFF6A0DAD,
+                      ).withValues(alpha: 0.1),
                       child: avatarUrl != null
                           ? ClipOval(
                               child: Image.network(
@@ -228,33 +235,48 @@ class ChatTile extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.done_all,
-                            size: 16,
-                            color: isDark
-                                ? const Color(0xFF9CA3AF)
-                                : const Color(0xFF6B7280),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              lastMessage,
+                      if (isTyping)
+                        Row(
+                          children: [
+                            TypingIndicator(dotSize: 6),
+                            const SizedBox(width: 4),
+                            Text(
+                              'typing...',
                               style: theme.textTheme.bodyMedium?.copyWith(
-                                color: isDark
-                                    ? const Color(0xFF9CA3AF)
-                                    : const Color(0xFF6B7280),
-                                fontWeight: unreadCount > 0
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
+                                color: const Color(0xFF10B981),
+                                fontWeight: FontWeight.w600,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.done_all,
+                              size: 16,
+                              color: isDark
+                                  ? const Color(0xFF9CA3AF)
+                                  : const Color(0xFF6B7280),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                lastMessage,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: isDark
+                                      ? const Color(0xFF9CA3AF)
+                                      : const Color(0xFF6B7280),
+                                  fontWeight: unreadCount > 0
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),

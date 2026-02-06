@@ -6,6 +6,7 @@ class MessageBubble extends StatelessWidget {
   final String time;
   final bool isSent;
   final bool isRead;
+  final bool isDelivered;
 
   const MessageBubble({
     super.key,
@@ -13,6 +14,7 @@ class MessageBubble extends StatelessWidget {
     required this.time,
     required this.isSent,
     this.isRead = false,
+    this.isDelivered = true, // Assume delivered by default
   });
 
   @override
@@ -34,7 +36,7 @@ class MessageBubble extends StatelessWidget {
           if (!isSent) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: const Color(0xFF6A0DAD).withOpacity(0.1),
+              backgroundColor: const Color(0xFF6A0DAD).withValues(alpha: 0.1),
               child: Icon(
                 Icons.person,
                 size: 18,
@@ -98,10 +100,10 @@ class MessageBubble extends StatelessWidget {
                   children: [
                     if (isSent) ...[
                       Icon(
-                        isRead ? Icons.done_all : Icons.done,
+                        isDelivered ? Icons.done_all : Icons.done,
                         size: 14,
                         color: isRead
-                            ? theme.colorScheme.primary
+                            ? const Color(0xFF6A0DAD) // Purple for read
                             : (isDark
                                   ? const Color(0xFF9CA3AF)
                                   : const Color(0xFF6B7280)),

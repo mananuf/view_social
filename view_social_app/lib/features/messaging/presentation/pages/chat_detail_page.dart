@@ -1,7 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/theme/design_tokens.dart';
+import '../../../../core/services/websocket_service.dart';
+import '../../../../injection_container.dart';
+import '../../../../shared/widgets/typing_indicator.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/date_separator.dart';
 import '../../data/datasources/messaging_remote_datasource.dart';
 import '../../data/models/message_model.dart';
 
@@ -35,11 +40,27 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   List<MessageModel> _messages = [];
   String? _errorMessage;
 
+  // WebSocket related
+  late WebSocketService _wsService;
+  StreamSubscription? _wsSubscription;
+  StreamSubscription? _typingSubscription;
+  StreamSubscription? _onlineStatusSubscription;
+  Timer? _typingTimer;
+  bool _isOtherUserTyping = false;
+  bool _isUserOnline = false;
+  String? _otherUserId;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
+    _messageController.addListener(_onTextChanged);
+    _wsService = sl<WebSocketService>();
     _loadMessages();
+    _listenToWebSocketEvents();
+    _listenToTypingIndicators();
+    _listenToOnlineStatus();
+    _markMessagesAsRead();
   }
 
   Future<void> _loadMessages() async {
@@ -59,6 +80,21 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         _isLoading = false;
       });
 
+      // Extract other user ID from first message or conversation
+      if (_messages.isNotEmpty) {
+        final firstMessage = _messages.first;
+        if (firstMessage.sender?.id != widget.currentUserId) {
+          _otherUserId = firstMessage.sender?.id;
+        } else if (_messages.length > 1) {
+          // Try to find a message from the other user
+          final otherMessage = _messages.firstWhere(
+            (m) => m.sender?.id != widget.currentUserId,
+            orElse: () => _messages.first,
+          );
+          _otherUserId = otherMessage.sender?.id;
+        }
+      }
+
       // Scroll to bottom after loading
       Future.delayed(const Duration(milliseconds: 100), () {
         if (_scrollController.hasClients) {
@@ -73,10 +109,94 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
+  void _listenToWebSocketEvents() {
+    _wsSubscription = _wsService.events.listen((event) {
+      if (event.type == WebSocketEventType.messageSent) {
+        final conversationId = event.data['conversation_id'] as String;
+        if (conversationId == widget.conversationId) {
+          _loadMessages(); // Reload messages when new message arrives
+        }
+      } else if (event.type == WebSocketEventType.messageRead) {
+        final messageId = event.data['message_id'] as String;
+        // Update message read status in the list
+        setState(() {
+          final index = _messages.indexWhere((m) => m.id == messageId);
+          if (index != -1) {
+            _messages[index] = _messages[index].copyWith(isRead: true);
+          }
+        });
+      }
+    });
+  }
+
+  void _listenToTypingIndicators() {
+    _typingSubscription = _wsService.typingIndicators.listen((typingMap) {
+      final typingUsers = typingMap[widget.conversationId] ?? {};
+      setState(() {
+        _isOtherUserTyping = typingUsers.isNotEmpty;
+      });
+    });
+  }
+
+  void _listenToOnlineStatus() {
+    _onlineStatusSubscription = _wsService.onlineStatus.listen((statusMap) {
+      // Check if the specific other user is online
+      if (_otherUserId != null) {
+        setState(() {
+          _isUserOnline = statusMap[_otherUserId] ?? false;
+        });
+      }
+    });
+  }
+
+  Future<void> _markMessagesAsRead() async {
+    // Mark all unread messages as read when opening the conversation
+    try {
+      final unreadMessages = _messages.where(
+        (m) => !m.isRead && m.sender?.id != widget.currentUserId,
+      );
+
+      for (final message in unreadMessages) {
+        await widget.messagingDataSource.markMessageAsRead(
+          widget.conversationId,
+          message.id,
+        );
+      }
+    } catch (e) {
+      print('Error marking messages as read: $e');
+    }
+  }
+
+  void _onTextChanged() {
+    final text = _messageController.text;
+    if (text.isNotEmpty) {
+      // Send via WebSocket
+      _wsService.sendTypingIndicator(widget.conversationId, true);
+      // Also send via HTTP API as backup
+      widget.messagingDataSource.sendTypingIndicator(
+        widget.conversationId,
+        true,
+      );
+
+      _typingTimer?.cancel();
+      _typingTimer = Timer(const Duration(seconds: 2), () {
+        _wsService.sendTypingIndicator(widget.conversationId, false);
+        widget.messagingDataSource.sendTypingIndicator(
+          widget.conversationId,
+          false,
+        );
+      });
+    }
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    _wsSubscription?.cancel();
+    _typingSubscription?.cancel();
+    _onlineStatusSubscription?.cancel();
+    _typingTimer?.cancel();
     super.dispose();
   }
 
@@ -143,6 +263,34 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     } else {
       return DateFormat('MMM d, HH:mm').format(dateTime);
     }
+  }
+
+  List<dynamic> _buildMessageList() {
+    final List<dynamic> items = [];
+    DateTime? lastDate;
+
+    for (final message in _messages) {
+      final messageDate = DateTime(
+        message.createdAt.year,
+        message.createdAt.month,
+        message.createdAt.day,
+      );
+
+      // Add date separator if date changed
+      if (lastDate == null || messageDate != lastDate) {
+        items.add(messageDate);
+        lastDate = messageDate;
+      }
+
+      items.add(message);
+    }
+
+    // Add typing indicator at the end if user is typing
+    if (_isOtherUserTyping) {
+      items.add('typing');
+    }
+
+    return items;
   }
 
   void _showOptionsMenu() {
@@ -312,7 +460,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                           color: theme.colorScheme.primary,
                         ),
                 ),
-                if (widget.isOnline)
+                if (_isUserOnline || widget.isOnline)
                   Positioned(
                     right: 0,
                     bottom: 0,
@@ -346,17 +494,32 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Text(
-                    widget.isOnline ? 'Online' : 'Offline',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: widget.isOnline
-                          ? const Color(0xFF10B981)
-                          : (isDark
-                                ? const Color(0xFF9CA3AF)
-                                : const Color(0xFF6B7280)),
-                      fontSize: 12,
+                  if (_isOtherUserTyping)
+                    Row(
+                      children: [
+                        TypingIndicator(dotSize: 6),
+                        const SizedBox(width: 4),
+                        Text(
+                          'typing...',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: const Color(0xFF10B981),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Text(
+                      (_isUserOnline || widget.isOnline) ? 'Online' : 'Offline',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: (_isUserOnline || widget.isOnline)
+                            ? const Color(0xFF10B981)
+                            : (isDark
+                                  ? const Color(0xFF9CA3AF)
+                                  : const Color(0xFF6B7280)),
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -454,17 +617,40 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                     padding: const EdgeInsets.symmetric(
                       vertical: DesignTokens.spaceLg,
                     ),
-                    itemCount: _messages.length,
+                    itemCount: _buildMessageList().length,
                     itemBuilder: (context, index) {
-                      final message = _messages[index];
-                      final isSent = message.sender?.id == widget.currentUserId;
+                      final item = _buildMessageList()[index];
 
-                      return MessageBubble(
-                        message: message.content ?? '',
-                        time: _formatTime(message.createdAt),
-                        isSent: isSent,
-                        isRead: message.isRead,
-                      );
+                      if (item is DateTime) {
+                        // Date separator
+                        return DateSeparator(date: item);
+                      } else if (item is String && item == 'typing') {
+                        // Typing bubble
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: DesignTokens.spaceLg,
+                            vertical: DesignTokens.spaceSm,
+                          ),
+                          child: Row(
+                            children: [TypingBubble(userName: widget.name)],
+                          ),
+                        );
+                      } else if (item is MessageModel) {
+                        // Message bubble
+                        final message = item;
+                        final isSent =
+                            message.sender?.id == widget.currentUserId;
+
+                        return MessageBubble(
+                          message: message.content ?? '',
+                          time: _formatTime(message.createdAt),
+                          isSent: isSent,
+                          isRead: message.isRead,
+                          isDelivered: true, // Assume delivered if received
+                        );
+                      }
+
+                      return const SizedBox.shrink();
                     },
                   ),
           ),
@@ -569,16 +755,12 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           ),
         ],
       ),
-      floatingActionButton: AnimatedScale(
-        scale: _showFab ? 1.0 : 0.0,
-        duration: DesignTokens.animationNormal,
-        curve: DesignTokens.curveEaseOut,
-        child: FloatingActionButton(
-          onPressed: _showOptionsMenu,
-          backgroundColor: theme.colorScheme.primary,
-          child: const Icon(Icons.auto_awesome, color: Colors.white),
-        ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showOptionsMenu,
+        backgroundColor: theme.colorScheme.primary,
+        child: const Icon(Icons.auto_awesome, color: Colors.white),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
